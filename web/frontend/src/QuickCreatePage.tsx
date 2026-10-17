@@ -622,9 +622,9 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     const done = items.length > 0 && items.every(item => item?.status === 'completed');
     return { done, active: !done && active, blocked };
   };
-  return <>
+  return <div className={`xhs-workbench-page ${platform === 'xiaohongshu' ? 'xhs-selected' : ''}`}>
     <div className="studio-page-heading create-heading">
-      <div><div className="page-kicker">WORKSPACE / 02</div><h1>内容工作区</h1><p>按平台完成研究、创作、媒体制作和检查，带走文案与真实产物。</p></div>
+      <div><div className="page-kicker">{platform === 'xiaohongshu' ? 'XHS WORKBENCH / 02' : 'WORKSPACE / 02'}</div><h1>{platform === 'xiaohongshu' ? '今天写哪一张？' : '内容工作区'}</h1><p>{platform === 'xiaohongshu' ? '从一个真实问题开始，给这条小红书笔记一个清楚的出发点。' : '按平台完成研究、创作、媒体制作和检查，带走文案与真实产物。'}</p></div>
       <div className="create-heading-actions">
         <button type="button" className={`secondary debug-log-toggle${debugMode ? ' enabled' : ''}`} role="switch" aria-checked={debugMode} aria-label="调试日志" onClick={() => setDebugMode(current => !current)}><span className="debug-log-indicator" aria-hidden="true" />调试日志：{debugMode ? '已开启' : '已关闭'}</button>
         <button className="quiet-button" disabled={busy} onClick={() => navigate('hotspots')}><StudioIcon name="compass" size={16} />回到热点</button>
@@ -632,6 +632,9 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     </div>
     {debugMode && !workflowJob && <p className="debug-mode-note" role="status">调试日志已开启。开始生成后，执行步骤、任务和耗时会显示在创作进度下方。</p>}
     <div className="profile-context-strip"><div><span className="page-kicker">PROFILE CONTEXT</span><strong>{profile ? `写作偏好 v${profileVersion || '?'} 已就绪` : '还没有保存写作偏好'}</strong><small>{profile ? '生成前可选择把平台语气与已确认偏好发送给当前模型服务。' : '先建立写作偏好，内容会更稳定地像你。'}</small></div><button className="secondary" disabled={busy} onClick={() => navigate('profile')}>{profile ? '调整写作偏好' : '建立写作偏好'}<StudioIcon name="arrow" size={14} /></button></div>
+    <nav className="xhs-route-strip" aria-label="内容创作阶段">
+      {['研究', '选题', '母稿', '适配', '检查', '保存'].map((label, index) => <span className={index === 1 ? 'active' : index === 0 ? 'done' : ''} key={label}><i aria-hidden="true" />{label}</span>)}
+    </nav>
     {notice && <Message>{notice}</Message>}
     {error && <Message error>{error}{gatewayBlocked && <><button className="link" onClick={() => navigate('settings')}>去模型设置</button><button className="link" disabled={handoffBusy || !topic.trim()} onClick={() => void saveAndContinue()}>{handoffBusy ? '正在保存主题…' : '保存主题并继续完整工作流'}</button></>}</Message>}
     {(workflowJob || busy) && <section ref={workflowProgressRef} className={`composer-workflow${compactWorkflow ? ' compact' : ''}`} aria-label={easelWorkflow ? '完整创作流程进度' : compactWorkflow ? '三段创作进度' : '六阶段创作进度'} aria-busy={busy || workflowWatching} aria-live="polite">
@@ -651,7 +654,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
         <label className="composer-label">补充素材 <span>可选</span><textarea disabled={busy} rows={6} value={context} onChange={e => { markComposerEdited(); setContext(e.target.value); }} placeholder="粘贴热点摘要、链接要点、自己的观点或素材…" /></label>
         <div className="composer-divider" />
         <div className="composer-panel-head"><span className="step-badge">02</span><div><h2>你准备发到哪里</h2><p>不同平台，会用不同的说法。</p></div></div>
-        <div className="platform-picker">{(Object.keys(platforms) as Platform[]).map(key => <button type="button" disabled={busy} key={key} className={platform === key ? 'selected' : ''} onClick={() => { markComposerEdited(); setPlatform(key); }}><span className={`platform-dot ${key}`}>{key === 'wechat' ? '微' : key === 'xiaohongshu' ? '红' : '音'}</span><span><strong>{platforms[key].label}</strong><small>{platforms[key].short}</small></span>{platform === key && <StudioIcon name="check" size={16} />}</button>)}</div>
+        <div className="platform-picker">{(Object.keys(platforms) as Platform[]).map(key => <button type="button" disabled={busy} key={key} aria-pressed={platform === key} className={platform === key ? 'selected' : ''} onClick={() => { markComposerEdited(); setPlatform(key); }}><span className={`platform-dot ${key}`}>{key === 'wechat' ? '微' : key === 'xiaohongshu' ? '红' : '音'}</span><span><strong>{platforms[key].label}</strong><small>{platforms[key].short}</small></span>{platform === key && <StudioIcon name="check" size={16} />}</button>)}</div>
         <div className="composer-divider" />
         <div className="composer-panel-head"><span className="step-badge">03</span><div><h2>你要带走什么</h2><p>{platform === 'douyin' ? '先选脚本，或继续制作成片。' : '完整内容会包含平台需要的配图和排版。'}</p></div></div>
         <div className="result-picker" role="group" aria-label="选择交付内容"><button type="button" disabled={busy} aria-pressed={modeIncludes(mode, '文章')} className={modeIncludes(mode, '文章') ? 'selected' : ''} onClick={() => { markComposerEdited(); setMode('文章'); }}><StudioIcon name="file" size={18} /><span><strong>{platform === 'wechat' ? '整套公众号文章' : platform === 'xiaohongshu' ? '整套小红书笔记' : '抖音脚本'}</strong><small>{platform === 'wechat' ? '正文、配图和可复制的 HTML 排版' : platform === 'xiaohongshu' ? '卡片、发布文案、标题与话题' : '口播、分镜、字幕与封面方案，不含视频'}</small></span>{modeIncludes(mode, '文章') && <StudioIcon name="check" size={16} />}</button><button type="button" disabled={busy} aria-pressed={mode === '配图'} className={mode === '配图' ? 'selected' : ''} onClick={() => { markComposerEdited(); setMode('配图'); setOutputKind('standard'); }}><StudioIcon name="image" size={18} /><span><strong>只做配图</strong><small>按素材制作封面、卡片或信息图</small></span>{mode === '配图' && <StudioIcon name="check" size={16} />}</button></div>
@@ -669,5 +672,5 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
         {platformResult && <section className="quality-review" aria-label="真实产物与校验"><h3>已生成的产物</h3><p>{readableStatus(platformResult.status)} · {platformResult.media_kind === 'script' ? '脚本，不含视频文件' : platformResult.media_kind === 'video' ? '视频制作' : platformResult.media_kind === 'image' ? '图文卡片' : '平台内容包'}</p>{platformResult.missing?.length ? <ul>{platformResult.missing.map((item, index) => <li key={`${item}-${index}`}>待补齐：{item}</li>)}</ul> : null}{outputArtifacts.length ? <ul>{outputArtifacts.map(path => <li key={path} style={{ marginBottom: 14 }}><a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer">{artifactLabel(path)} · {path.split('/').pop()}</a> <a href={mediaUrl(path)} download>下载</a>{isImageArtifact(path) && <a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 8 }}><img src={mediaUrl(path)} alt={`已生成图片：${path.split('/').pop()}`} loading="lazy" style={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 4 }} /></a>}{isVideoArtifact(path) && <video src={mediaUrl(path)} controls preload="metadata" style={{ display: 'block', maxWidth: '100%', maxHeight: 360, marginTop: 8 }} />}</li>)}</ul> : <p>还没有可下载的产物文件。</p>}{Boolean(platformResult.checks?.length) && <details><summary>查看产物校验</summary><ul>{platformResult.checks.map((check, index) => <li key={index}>{checkSummary(check)}</li>)}</ul></details>}{easelWorkflow && <small>本次流程：{platformResult.skill || '平台创作流程'} · 已记录 {workflowJob?.execution_receipts?.length || 0} 条执行回执。</small>}</section>}
       </section>
     </div>
-  </>;
+  </div>;
 }
