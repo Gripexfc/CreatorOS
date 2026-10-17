@@ -31,6 +31,59 @@ const displayBaseUrl = (row: ModelRow | null) => {
 
 type ModelAction = 'read' | 'save' | 'test';
 type MediaChannel = 'image' | 'video';
+type ModelDraft = { model: string; baseUrl: string; key: string; name: string; primary: boolean };
+type StoredModelDraft = Omit<ModelDraft, 'key'>;
+
+const MODEL_DRAFTS_STORAGE_KEY = 'creatoros:model-drafts:v1';
+const MODEL_ACTIVE_PROVIDER_STORAGE_KEY = 'creatoros:model-active-provider:v1';
+
+const readStoredDrafts = (): Partial<Record<ModelProviderId, StoredModelDraft>> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.sessionStorage.getItem(MODEL_DRAFTS_STORAGE_KEY);
+    const value = raw ? JSON.parse(raw) : {};
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeStoredDraft = (providerId: ModelProviderId, draft: ModelDraft) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const drafts = readStoredDrafts();
+    drafts[providerId] = { model: draft.model, baseUrl: draft.baseUrl, name: draft.name, primary: draft.primary };
+    window.sessionStorage.setItem(MODEL_DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+  } catch {
+    // A blocked/private session storage must not prevent configuration.
+  }
+};
+
+const clearStoredDraft = (providerId: ModelProviderId) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const drafts = readStoredDrafts();
+    delete drafts[providerId];
+    window.sessionStorage.setItem(MODEL_DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+  } catch {
+    // A blocked/private session storage must not prevent configuration.
+  }
+};
+
+const readStoredActiveProvider = (): ModelProviderId | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.sessionStorage.getItem(MODEL_ACTIVE_PROVIDER_STORAGE_KEY);
+    return value && MODEL_PROVIDER_PRESETS.some(item => item.id === value) ? value as ModelProviderId : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredActiveProvider = (providerId: ModelProviderId) => {
+  if (typeof window === 'undefined') return;
+  try { window.sessionStorage.setItem(MODEL_ACTIVE_PROVIDER_STORAGE_KEY, providerId); } catch { /* ignore */ }
+};
 
 const modelErrorText = (error: unknown, action: ModelAction) => {
   const message = error instanceof Error ? error.message : '';
@@ -213,9 +266,23 @@ export function ModelSettingsPage() {
   const [discoveringModels, setDiscoveringModels] = useState(false);
   const [discoveryDetail, setDiscoveryDetail] = useState('');
   const discoveryRequestRef = useRef(0);
+  const discoveryAbortRef = useRef<AbortController | null>(null);
   // Keep unfinished values per provider while the user compares services.
-  // This is memory-only; API keys are never persisted in browser storage.
-  const draftRef = useRef<Partial<Record<ModelProviderId, { model: string; baseUrl: string; key: string; name: string; primary: boolean }>>>({});
+  // Non-secret fields survive a route remount in sessionStorage; API keys stay
+  // in memory only and are never written to browser storage.
+  const draftRef = useRef<Partial<Record<ModelProviderId, ModelDraft>>>({
+    ...Object.fromEntries(Object.entries(readStoredDrafts()).map(([id, draft]) => [id, { ...draft, key: '' }])),
+  });
+
+  const rememberDraft = (id: ModelProviderId, draft: ModelDraft) => {
+    draftRef.current[id] = draft;
+    writeStoredDraft(id, draft);
+  };
+
+  const clearDraft = (id: ModelProviderId) => {
+    delete draftRef.current[id];
+    clearStoredDraft(id);
+  };
 
   const preset = useMemo(() => providerPreset(providerId), [providerId]);
   const current = useMemo(() => editableRowFor(rows, preset), [rows, preset]);
@@ -231,7 +298,10 @@ export function ModelSettingsPage() {
 
   const hydrate = (nextPreset: ModelProviderPreset, row: ModelRow | null) => {
     setProviderId(nextPreset.id);
-    setModel(row?.model || nextPreset.models[0] || '');
+    // Do not silently select a guessed model for a provider that has no saved
+    // configuration. The catalog button can discover real IDs, and the user
+    // can still choose one of the preset suggestions or enter an ID manually.
+    setModel(row?.model || '');
     setBaseUrl(nextPreset.supportsBaseUrl ? displayBaseUrl(row) || nextPreset.baseUrl : '');
     setName(nextPreset.slot === 'custom' ? row?.name || nextPreset.providerName || '' : '');
     setPrimary(row ? row.role === '主' : true);
@@ -244,6 +314,9 @@ export function ModelSettingsPage() {
     overrides: { baseUrl?: string; key?: string; model?: string; name?: string } = {},
   ) => {
     const requestId = ++discoveryRequestRef.current;
+    discoveryAbortRef.current?.abort();
+    const controller = new AbortController();
+    discoveryAbortRef.current = controller;
     const requestedBase = (overrides.baseUrl ?? (nextPreset.supportsBaseUrl ? displayBaseUrl(row) || nextPreset.baseUrl : '')).trim();
     const requestedKey = overrides.key ?? '';
     const requestedModel = overrides.model ?? row?.model ?? '';
@@ -276,17 +349,18 @@ export function ModelSettingsPage() {
         model: requestedModel,
         baseUrl: requestedBase,
         key: requestedKey,
-      });
+      }, controller.signal);
       if (requestId !== discoveryRequestRef.current) return;
       const remoteModels = Array.from(new Set((response.models || []).map(item => item.trim()).filter(Boolean)));
       setDiscoveredModels(remoteModels);
       setDiscoveryDetail(response.available && remoteModels.length
         ? `已读取 ${remoteModels.length} 个可用模型。`
         : response.detail || '暂未读取到模型列表，可手填模型 ID。');
-    } catch {
+    } catch (e) {
       if (requestId !== discoveryRequestRef.current) return;
       setDiscoveredModels([]);
-      setDiscoveryDetail('暂未读取到模型列表，可手填模型 ID。');
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      setDiscoveryDetail(e instanceof ApiError ? e.message : '暂未读取到模型列表，可手填模型 ID。');
     } finally {
       if (requestId === discoveryRequestRef.current) setDiscoveringModels(false);
     }
@@ -295,6 +369,7 @@ export function ModelSettingsPage() {
   const load = async () => {
     setLoading(true);
     setError('');
+    discoveryAbortRef.current?.abort();
     discoveryRequestRef.current += 1;
     setDiscoveredModels([]);
     setDiscoveryDetail('');
@@ -302,16 +377,46 @@ export function ModelSettingsPage() {
     const [modelsResult, gatewayResult] = await Promise.allSettled([getModelChannels(), getModelGatewayStatus()]);
     if (modelsResult.status === 'fulfilled') {
       const nextRows = modelsResult.value.channels.chat.rows || [];
-      const nextProvider = providerPreset(inferProviderPreset(nextRows));
+      const inferredProvider = providerPreset(inferProviderPreset(nextRows));
+      const activeProviderId = readStoredActiveProvider();
+      const activeProvider = activeProviderId ? providerPreset(activeProviderId) : inferredProvider;
+      const nextProvider = activeProviderId && (draftRef.current[activeProviderId] || editableRowFor(nextRows, activeProvider))
+        ? activeProvider
+        : inferredProvider;
       const nextRow = editableRowFor(nextRows, nextProvider);
+      const draft = draftRef.current[nextProvider.id];
       setRows(nextRows);
-      hydrate(nextProvider, nextRow);
-      void discoverFor(nextProvider, nextRow);
+      if (draft) {
+        setProviderId(nextProvider.id);
+        setModel(draft.model);
+        setBaseUrl(nextProvider.supportsBaseUrl ? draft.baseUrl : '');
+        setName(nextProvider.slot === 'custom' ? draft.name : '');
+        setPrimary(draft.primary);
+        setKey(draft.key);
+      } else {
+        hydrate(nextProvider, nextRow);
+      }
+      void discoverFor(nextProvider, nextRow, draft ? {
+        baseUrl: draft.baseUrl,
+        key: draft.key,
+        model: draft.model,
+        name: draft.name,
+      } : {});
       setHydrated(true);
     } else {
-      const nextProvider = providerPreset('deepseek');
+      const nextProvider = providerPreset(readStoredActiveProvider() || 'deepseek');
       setRows([]);
-      hydrate(nextProvider, null);
+      const draft = draftRef.current[nextProvider.id];
+      if (draft) {
+        setProviderId(nextProvider.id);
+        setModel(draft.model);
+        setBaseUrl(draft.baseUrl);
+        setName(draft.name);
+        setPrimary(draft.primary);
+        setKey(draft.key);
+      } else {
+        hydrate(nextProvider, null);
+      }
       setHydrated(true);
       setError(`${modelErrorText(modelsResult.reason, 'read')} 页面仍可继续填写新的配置。`);
     }
@@ -332,7 +437,8 @@ export function ModelSettingsPage() {
   }, []);
 
   const selectProvider = (value: ModelProviderId) => {
-    draftRef.current[providerId] = { model, baseUrl, key, name, primary };
+    writeStoredActiveProvider(value);
+    rememberDraft(providerId, { model, baseUrl, key, name, primary });
     const nextPreset = providerPreset(value);
     const nextRow = editableRowFor(rows, nextPreset);
     const draft = draftRef.current[value];
@@ -347,7 +453,12 @@ export function ModelSettingsPage() {
     } else {
       hydrate(nextPreset, nextRow);
     }
-    void discoverFor(nextPreset, nextRow);
+    void discoverFor(nextPreset, nextRow, draft ? {
+      baseUrl: draft.baseUrl,
+      key: draft.key,
+      model: draft.model,
+      name: draft.name,
+    } : {});
     setNotice('');
     setError('');
     setTestResults([]);
@@ -371,7 +482,12 @@ export function ModelSettingsPage() {
       setError(endpointChanged ? '服务地址已变化，请重新填写 API Key。' : '首次配置需要填写 API Key。');
       return false;
     }
+    if (/https?:\/\//i.test(key.trim())) {
+      setError('API Key 看起来包含服务地址，请只粘贴密钥本身。');
+      return false;
+    }
 
+    rememberDraft(providerId, { model, baseUrl, key, name, primary });
     setSaving(true);
     setError('');
     setNotice('');
@@ -389,7 +505,7 @@ export function ModelSettingsPage() {
       const nextRow = editableRowFor(nextRows, preset);
       setRows(nextRows);
       setKey('');
-      delete draftRef.current[providerId];
+      clearDraft(providerId);
       void discoverFor(preset, nextRow, { baseUrl: requestedBase, key: key.trim(), model: model.trim(), name });
       const nextGateway = await getModelGatewayStatus().catch(() => gateway);
       setGateway(nextGateway);
@@ -537,7 +653,7 @@ export function ModelSettingsPage() {
             </div>
 
             <div className="model-field">
-              <div className="model-field-label"><label htmlFor="model-choice">模型</label><small>不确定时先用默认选项</small></div>
+              <div className="model-field-label"><div><label htmlFor="model-choice">模型</label><small>先填写地址和 Key，再获取真实列表；也可以手填模型 ID</small></div><button type="button" className="quiet-button model-fetch-button" disabled={loading || saving || testing || !hydrated || discoveringModels} onClick={() => void discoverFor(preset, current, { baseUrl, key, model, name })}>{discoveringModels ? '读取中…' : '获取模型'}</button></div>
               <ModelDropdown
                 id="model-choice"
                 value={modelIsKnown ? model : CUSTOM_MODEL_VALUE}
@@ -547,7 +663,7 @@ export function ModelSettingsPage() {
                 ]}
                 onChange={value => {
           const nextModel = value === CUSTOM_MODEL_VALUE ? '' : value;
-          draftRef.current[providerId] = { model: nextModel, baseUrl, key, name, primary };
+          rememberDraft(providerId, { model: nextModel, baseUrl, key, name, primary });
           setModel(nextModel);
         }}
                 disabled={loading || saving}
@@ -555,7 +671,7 @@ export function ModelSettingsPage() {
               {(discoveringModels || discoveryDetail) && <small className="model-catalog-status" aria-live="polite">{discoveringModels ? '正在读取服务商可用模型…' : discoveryDetail}</small>}
               {!modelIsKnown && <input id="model-custom" className="model-custom-input" value={model} onChange={(event) => {
                 const nextModel = event.target.value;
-                draftRef.current[providerId] = { model: nextModel, baseUrl, key, name, primary };
+                rememberDraft(providerId, { model: nextModel, baseUrl, key, name, primary });
                 setModel(nextModel);
               }} placeholder="粘贴服务商提供的模型名称或编号" autoComplete="off" />}
             </div>
@@ -564,9 +680,9 @@ export function ModelSettingsPage() {
               <div className="model-field-label"><label htmlFor="model-key">API Key（访问密钥）</label><small>{current?.keyMasked ? `已保存 ${current.keyMasked}，留空即可沿用` : '服务商提供，只在本机保存，不会显示明文'}</small></div>
               <input id="model-key" className="model-key-input" type="password" value={key} onChange={(event) => {
                 const nextKey = event.target.value;
-                draftRef.current[providerId] = { model, baseUrl, key: nextKey, name, primary };
+                rememberDraft(providerId, { model, baseUrl, key: nextKey, name, primary });
                 setKey(nextKey);
-              }} onBlur={() => void discoverFor(preset, current, { baseUrl, key, model, name })} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴 API Key'} autoComplete="new-password" />
+              }} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴 API Key'} autoComplete="new-password" />
             </div>
           </div>
 
@@ -575,17 +691,17 @@ export function ModelSettingsPage() {
             <div className="model-advanced-grid">
               {preset.slot === 'custom' && !preset.providerName && <label>服务商标识<input value={name} onChange={(event) => {
                   const nextName = event.target.value;
-                  draftRef.current[providerId] = { model, baseUrl, key, name: nextName, primary };
+                  rememberDraft(providerId, { model, baseUrl, key, name: nextName, primary });
                   setName(nextName);
                 }} placeholder="例如 my-provider" autoComplete="off" /></label>}
               {preset.supportsBaseUrl && <label>服务地址{preset.slot !== 'custom' || preset.providerName ? '（可选）' : ''}<input value={baseUrl} onChange={(event) => {
                   const nextBaseUrl = event.target.value;
-                  draftRef.current[providerId] = { model, baseUrl: nextBaseUrl, key, name, primary };
+                  rememberDraft(providerId, { model, baseUrl: nextBaseUrl, key, name, primary });
                   setBaseUrl(nextBaseUrl);
-                }} onBlur={() => void discoverFor(preset, current, { baseUrl, key, model, name })} placeholder="https://api.example.com/v1" autoComplete="url" /></label>}
+                }} placeholder="https://api.example.com/v1" autoComplete="url" /></label>}
               <label className="model-primary-toggle"><input type="checkbox" checked={primary} onChange={(event) => {
                 const nextPrimary = event.target.checked;
-                draftRef.current[providerId] = { model, baseUrl, key, name, primary: nextPrimary };
+                rememberDraft(providerId, { model, baseUrl, key, name, primary: nextPrimary });
                 setPrimary(nextPrimary);
               }} />设为内容生成主模型</label>
             </div>

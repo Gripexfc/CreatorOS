@@ -219,6 +219,28 @@ def test_model_save_failure_does_not_clear_existing_probe(monkeypatch, tmp_path)
     assert clear_calls == []
 
 
+def test_model_save_merges_custom_provider_instead_of_pruning_other_rows(monkeypatch, tmp_path):
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    config_path = config_dir / "openclaw.json"
+    config_path.write_text(json.dumps({
+        "models": {"providers": {
+            "alpha": {"baseUrl": "https://alpha.example/v1", "apiKey": "alpha-key", "models": [{"id": "alpha-model"}]},
+        }},
+        "agents": {"defaults": {"model": {"primary": "alpha/alpha-model"}}},
+    }))
+    monkeypatch.setattr(upstream, "PROJECT_ROOT", tmp_path)
+    note = upstream._sync_openclaw_chat(
+        {"beta": {"base": "https://beta.example/v1", "key": "beta-key", "model": "beta-model"}},
+        {"beta"},
+        "beta/beta-model",
+    )
+    assert "失败" not in note
+    saved = json.loads(config_path.read_text())
+    assert set(saved["models"]["providers"]) == {"alpha", "beta"}
+    assert saved["agents"]["defaults"]["model"]["primary"] == "beta/beta-model"
+
+
 def test_model_selftest_uses_generation_probe_and_classifies_billing(monkeypatch):
     class BillingOpener:
         def open(self, request, timeout):
@@ -441,6 +463,37 @@ def test_model_discovery_does_not_send_stored_key_to_different_endpoint(monkeypa
     assert body["models"] == []
     assert body["available"] is False
     assert body["source"] == "none"
-    assert "请先保存" in body["detail"]
+    assert "当前服务地址对应的 API Key" in body["detail"]
     assert "secret-model-key" not in response.text
     assert not attempted
+
+
+def test_model_discovery_uses_draft_key_for_new_endpoint_without_persisting_it(monkeypatch):
+    requests = []
+
+    class DiscoveryOpener:
+        def open(self, request, timeout):
+            requests.append(request)
+            return _DiscoveryResponse(json.dumps({"models": [{"id": "draft-model"}]}).encode())
+
+    monkeypatch.setattr(upstream, "_saved_model_discovery_target",
+                        lambda _slot, _name: ("https://saved.example.com/v1", "stored-key"))
+    monkeypatch.setattr(upstream, "_ssrf_safe", lambda _url: True)
+    monkeypatch.setattr(upstream.urllib.request, "build_opener", lambda *_args, **_kwargs: DiscoveryOpener())
+    with TestClient(upstream.app, base_url="http://127.0.0.1:8000") as client:
+        response = client.post(
+            "/api/settings/models/discover",
+            json={
+                "slot": "custom",
+                "name": "snode",
+                "baseUrl": "https://draft.example.com/v1",
+                "key": "draft-key",
+            },
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["models"] == ["draft-model"]
+    assert requests[0].full_url == "https://draft.example.com/v1/models"
+    assert requests[0].headers["Authorization"] == "Bearer draft-key"
+    assert "draft-key" not in response.text

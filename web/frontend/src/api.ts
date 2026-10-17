@@ -153,21 +153,25 @@ const apiOrigin = (() => {
 
 export const apiUrl = (path: string) => `${apiOrigin}${path}`;
 
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+type ApiRequestInit = RequestInit & { timeoutMs?: number };
+
+const request = async <T>(path: string, init?: ApiRequestInit): Promise<T> => {
   // Status polling must not hang forever when the local service or gateway
   // stops responding. Callers that provide their own AbortSignal keep control
   // of the deadline; ordinary requests get a short local timeout.
-  const controller = init?.signal ? null : new AbortController();
-  const timeout = window.setTimeout(() => controller?.abort(), 15000);
+  const { timeoutMs = 15000, ...requestInit } = init || {};
+  const controller = requestInit.signal ? null : new AbortController();
+  const timeout = window.setTimeout(() => controller?.abort(), timeoutMs);
   let response: Response;
   try {
     response = await fetch(apiUrl(path), {
-      ...init,
-      signal: init?.signal ?? controller?.signal,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      ...requestInit,
+      cache: requestInit.cache ?? 'no-store',
+      signal: requestInit.signal ?? controller?.signal,
+      headers: { "Content-Type": "application/json", ...(requestInit.headers ?? {}) },
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError' && !init?.signal) {
+    if (error instanceof DOMException && error.name === 'AbortError' && !requestInit.signal) {
       throw new ApiError(408, '本地服务响应超时，请稍后重试。');
     }
     throw error;
@@ -182,6 +186,23 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     throw new ApiError(response.status, String(message));
   }
   return body as T;
+};
+
+const retryTransient = async <T>(operation: () => Promise<T>, attempts = 3): Promise<T> => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
+      const status = error instanceof ApiError ? error.status : 0;
+      if (status >= 400 && status < 500 && status !== 408) throw error;
+      if (attempt === attempts - 1) throw error;
+      await new Promise(resolve => window.setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw lastError;
 };
 
 export const getProfile = () => request<ProfileResponse>("/api/v1/profile");
@@ -414,10 +435,10 @@ export type ModelSaveRow = { slot: string; name?: string; model: string; baseUrl
 export type ModelSelftestResult = { baseUrl: string; ok: boolean; ms: number; detail?: string };
 export type ModelDiscoveryRequest = { slot: string; name?: string; model?: string; baseUrl?: string; key?: string };
 export type ModelDiscoveryResponse = { models: string[]; available: boolean; source: 'remote' | 'configured' | 'unavailable' | 'none'; detail?: string };
-export const getModelChannels = () => request<ModelChannelsResponse>('/api/settings/models');
-export const saveModelConfig = (rows: ModelSaveRow[], channel: 'chat' | 'image' | 'video' | 'music' | 'speech' = 'chat') => request<ModelChannelsResponse & { ok: boolean; note?: string }>('/api/settings/models/save', { method: 'POST', body: JSON.stringify({ channel, rows }) });
-export const discoverModels = (payload: ModelDiscoveryRequest) => request<ModelDiscoveryResponse>('/api/settings/models/discover', { method: 'POST', body: JSON.stringify(payload) });
-export const selftestModel = (channel: 'chat' | 'image' | 'video' | 'music' | 'speech' = 'chat') => request<{ channel: string; results: ModelSelftestResult[]; testedAt: number }>('/api/settings/models/selftest', { method: 'POST', body: JSON.stringify({ channel }) });
+export const getModelChannels = () => retryTransient(() => request<ModelChannelsResponse>('/api/settings/models', { timeoutMs: 30000 }));
+export const saveModelConfig = (rows: ModelSaveRow[], channel: 'chat' | 'image' | 'video' | 'music' | 'speech' = 'chat') => request<ModelChannelsResponse & { ok: boolean; note?: string }>('/api/settings/models/save', { method: 'POST', body: JSON.stringify({ channel, rows }), timeoutMs: 45000 });
+export const discoverModels = (payload: ModelDiscoveryRequest, signal?: AbortSignal) => retryTransient(() => request<ModelDiscoveryResponse>('/api/settings/models/discover', { method: 'POST', body: JSON.stringify(payload), signal, timeoutMs: 25000 }));
+export const selftestModel = (channel: 'chat' | 'image' | 'video' | 'music' | 'speech' = 'chat') => request<{ channel: string; results: ModelSelftestResult[]; testedAt: number }>('/api/settings/models/selftest', { method: 'POST', body: JSON.stringify({ channel }), timeoutMs: 45000 });
 export type ModelGatewayStatus = {
   configured: boolean;
   gatewayOnline: boolean;
@@ -427,7 +448,7 @@ export type ModelGatewayStatus = {
   nextStep: string;
   lastSelftest?: { testedAt: number; results: ModelSelftestResult[] } | null;
 };
-export const getModelGatewayStatus = () => request<ModelGatewayStatus>('/api/settings/models/status');
+export const getModelGatewayStatus = () => retryTransient(() => request<ModelGatewayStatus>('/api/settings/models/status', { timeoutMs: 30000 }));
 export type OfficialOutputNode = { name: string; type: 'dir' | 'file'; path: string; kind?: string; size?: number; mtime?: number; children?: OfficialOutputNode[]; fileCount?: number; meta?: Record<string, unknown> };
 export const listOfficialOutputs = () => request<OfficialOutputNode[]>('/api/outputs');
 export const officialOutputUrl = (path: string) => `/api/output/${path.split('/').map(encodeURIComponent).join('/')}`;

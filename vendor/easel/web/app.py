@@ -1835,6 +1835,8 @@ def _discover_model_ids(base: str, key: str) -> tuple[list[str], str]:
         return [], "暂时无法连接服务商的模型目录"
 
     items = payload.get("data") if isinstance(payload, dict) else payload
+    if not items and isinstance(payload, dict):
+        items = payload.get("models")
     if not isinstance(items, list):
         return [], "服务返回的模型目录格式不受支持"
     result: list[str] = []
@@ -1863,16 +1865,23 @@ async def api_settings_models_discover(req: ModelDiscoverRequest):
     requested_base = (req.baseUrl or "").strip().rstrip("/")
     if len(slot) > 32 or len(name) > 64 or len(requested_base) > 300 or len(req.key or "") > 400:
         raise HTTPException(400, "模型发现参数过长，请检查服务商、地址和 API Key")
+    if re.search(r"https?://", req.key or "", re.IGNORECASE):
+        raise HTTPException(400, "API Key 看起来包含服务地址，请只粘贴密钥本身")
     if slot == "anthropic":
         return {"models": [], "available": False, "source": "none", "detail": "Anthropic 使用预置模型列表，暂不请求兼容接口目录"}
     saved_base, saved_key = _saved_model_discovery_target(slot, name)
-    # Only the endpoint already stored for this slot can use the stored key.
-    # A draft key is accepted for contract compatibility but is deliberately
-    # ignored here; save the provider first, then automatic discovery runs.
     base = requested_base or saved_base
-    if not base or base.rstrip("/").lower() != saved_base.rstrip("/").lower():
-        return {"models": [], "available": False, "source": "none", "detail": "请先保存当前服务地址和 API Key，再获取模型列表"}
-    models, detail = await asyncio.to_thread(_discover_model_ids, base, saved_key)
+    if not base:
+        return {"models": [], "available": False, "source": "none", "detail": "请先填写服务地址和 API Key，再获取模型列表"}
+    # A key supplied by the current form is used only for this in-memory
+    # discovery request and is never written to disk. When the form leaves the
+    # key blank, fall back to the stored key only for the exact stored endpoint;
+    # this prevents an old credential being sent to a newly entered URL.
+    same_endpoint = bool(saved_base) and base.rstrip("/").lower() == saved_base.rstrip("/").lower()
+    key = (req.key or "").strip() or (saved_key if same_endpoint else "")
+    if not key:
+        return {"models": [], "available": False, "source": "none", "detail": "请先填写当前服务地址对应的 API Key，再获取模型列表"}
+    models, detail = await asyncio.to_thread(_discover_model_ids, base, key)
     return {
         "models": models,
         "available": bool(models),
@@ -1991,10 +2000,11 @@ def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str]
         if not gateway.get('auth'):
             gateway['auth'] = {'mode': 'token', 'token': secrets.token_hex(24)}
             changed = True
-        for pkey in [k for k in list(providers.keys())
-                     if k not in RESERVED_PROVIDER_KEYS and k not in keep_custom]:
-            providers.pop(pkey, None)
-            changed = True
+        # A settings save currently submits the active provider row, rather than
+        # a complete provider manifest. Never interpret that partial payload as
+        # a delete operation: switching providers must not erase another saved
+        # custom provider. An explicit delete endpoint can prune providers in
+        # the future, but a normal save only merges the row being edited.
         for pkey, vals in provider_updates.items():
             prov = providers.setdefault(pkey, {})
             base, key, model = vals.get('base', ''), vals.get('key', ''), vals.get('model', '')
@@ -2118,6 +2128,8 @@ async def api_settings_models_save(req: ModelSaveRequest):
                 raise HTTPException(400, '生图必须填写 API 根地址，不能沿用聊天模型地址')
             if (_key0 and any(x.isspace() for x in _key0)) or (_key20 and any(x.isspace() for x in _key20)):
                 raise HTTPException(400, f'{_p0["name"]} 的 Key 不能包含空白字符')
+            if re.search(r"https?://", _key0, re.IGNORECASE) or re.search(r"https?://", _key20, re.IGNORECASE):
+                raise HTTPException(400, f'{_p0["name"]} 的 Key 看起来包含服务地址，请只粘贴密钥本身')
             _bk0 = next((k for k in _p0["keys"] if not k["secret"]
                          and ("BASE" in k["env"] or "URL" in k["env"])), None)
             _mk0 = next((k for k in _p0["keys"] if not k["secret"] and "MODEL" in k["env"]), None)
@@ -2163,6 +2175,8 @@ async def api_settings_models_save(req: ModelSaveRequest):
             raise HTTPException(400, f'Base URL 需是合法的 http(s):// 地址：{base[:60]}')
         if key and any(ch.isspace() for ch in key):
             raise HTTPException(400, 'API Key 不能包含空白字符')
+        if re.search(r"https?://", key, re.IGNORECASE):
+            raise HTTPException(400, 'API Key 看起来包含服务地址，请只粘贴密钥本身')
         if len(model) > 120 or len(base) > 300 or len(key) > 400:
             raise HTTPException(400, '字段过长，请检查')
         # 改 Base URL 但把 Key 留空（留空=沿用旧 Key）＝ 把已存的真 Key 指向新地址，
@@ -2190,6 +2204,7 @@ async def api_settings_models_save(req: ModelSaveRequest):
             if key:
                 updates['EASEL_LLM_API_KEY'] = key
             if is_chat:
+                provider_updates['relay'] = {'model': model, 'base': base, 'key': key}
                 pkey = 'relay'
         elif slot == 'anthropic':
             if model:
@@ -2197,6 +2212,7 @@ async def api_settings_models_save(req: ModelSaveRequest):
             if key:
                 updates['ANTHROPIC_API_KEY'] = key
             if is_chat:
+                provider_updates['anthropic'] = {'model': model, 'base': base, 'key': key}
                 pkey = 'anthropic'
         elif slot == 'siliconflow':
             if base:
@@ -2405,7 +2421,11 @@ async def api_models_selftest(req: SelftestRequest):
             return {"baseUrl": base, "ok": False, "ms": int((time.time() - t0) * 1000),
                     "detail": "连接检查未完成，请稍后重试"}
 
-    results = await asyncio.to_thread(lambda: [_probe(b, k, m, kind) for b, k, m, kind in targets])
+    # Probe configured providers concurrently. A slow historical backup must
+    # not consume the whole client timeout before the primary result returns.
+    results = list(await asyncio.gather(*(
+        asyncio.to_thread(_probe, b, k, m, kind) for b, k, m, kind in targets
+    )))
     # Persist only the chat probe response.  This makes verification survive a
     # settings route change while keeping API keys out of disk and preventing a
     # transcribe-only check from being shown as chat verification.
