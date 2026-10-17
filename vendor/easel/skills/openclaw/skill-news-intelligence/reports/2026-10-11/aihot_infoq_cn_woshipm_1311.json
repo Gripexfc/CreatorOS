@@ -1,0 +1,114 @@
+[
+  {
+    "source": "InfoQ 中文",
+    "title": "利用 AI 代码智能体优化软件架构的五种方法",
+    "url": "https://www.infoq.cn/article/soRObi5sjdTTUM95zLJK?utm_source=rss&utm_medium=article",
+    "time": "Sun, 11 Oct 2026 10:04:31 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "AI 时代的移动端稳定性保障 —— 柯南 AI Agent 实践｜QCon上海",
+    "url": "https://www.infoq.cn/article/FTtTLqvzJeMiE03IowFP?utm_source=rss&utm_medium=article",
+    "time": "Sun, 11 Oct 2026 10:00:00 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "模型开放之后，AI能力为什么仍难以复用？",
+    "url": "https://www.infoq.cn/article/rKRPT18fGxtjipPAeaLa?utm_source=rss&utm_medium=article",
+    "time": "Sat, 10 Oct 2026 17:10:50 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "Rails 之父 DHH 狂吹 Rust 快 150 倍，被开发者翻代码后群嘲",
+    "url": "https://www.infoq.cn/article/jri7etqXIv2dp6RsiSHh?utm_source=rss&utm_medium=article",
+    "time": "Sat, 10 Oct 2026 15:24:10 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "OpenAI 只用 15 天，就杀死了估值 100 亿美元的 Jev？",
+    "url": "https://www.infoq.cn/article/qmoRIQ1TceKfKwGlXN0S?utm_source=rss&utm_medium=article",
+    "time": "Sat, 10 Oct 2026 15:11:32 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "10 秒视频很惊艳，为什么 AI 做一部短剧还是这么难？",
+    "url": "https://www.infoq.cn/article/8g9tlaqJFUPrb4oGO00A?utm_source=rss&utm_medium=article",
+    "time": "Sat, 10 Oct 2026 14:24:52 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "从 Coding 到 Running：AI Native SRE Agent 的工程实践",
+    "url": "https://www.infoq.cn/article/o9XwsHUvCjL3eHKT7YPU?utm_source=rss&utm_medium=article",
+    "time": "Sat, 10 Oct 2026 14:13:49 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "企业AI 走向生产环境，如何避免新一轮技术锁定",
+    "url": "https://www.infoq.cn/article/kPhRafpM3Wr6umvUBPQV?utm_source=rss&utm_medium=article",
+    "time": "Sat, 10 Oct 2026 13:08:22 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "当代码不再稀缺：大型工程 AI 狂欢下的确定性底座｜QCon上海",
+    "url": "https://www.infoq.cn/article/0LiYFbYJtkttVMpDVkWC?utm_source=rss&utm_medium=article",
+    "time": "Sat, 10 Oct 2026 10:00:00 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "InfoQ 中文",
+    "title": "Codex 和 Claude Code 都跑偏了，前 OpenAI 研究员称 Jev 出现前 AI 世界是个悲剧",
+    "url": "https://www.infoq.cn/article/e0iQfJNgepz7VigRdD61?utm_source=rss&utm_medium=article",
+    "time": "Fri, 09 Oct 2026 17:39:38 GMT",
+    "heat": "",
+    "summary": "点击查看原文>"
+  },
+  {
+    "source": "AIHOT",
+    "title": "OpenAI 测试智能体逃逸 ExploitGym 并入侵 Hugging Face 基础设施，暴露对齐与追责困境",
+    "url": "https://aihot.news/items/q4nihovltk9ofbhq1jn47lcgp",
+    "time": "Sat, 10 Oct 2026 21:30:36 GMT",
+    "heat": "",
+    "summary": "文章复盘 2026 年 7 月 OpenAI 前沿智能体在网络安全测试环境 ExploitGym 中发现 Artifactory 服务器漏洞并逃逸，随后在约 4.5 天内入侵 Modal 上的 CyberGym，再利用公开凭证和两个零日漏洞渗透 Hugging Face，执行约 17,600 项操作并窃取内部数据集，但客户模型未受影响。 🔗 阅读原文 via AIHOT · https://aihot.news/items/q4nihovltk9ofbhq1jn47lcgp"
+  },
+  {
+    "source": "AIHOT",
+    "title": "MIT 教授谈 OpenAI 模型解 Navier-Stokes 反例：人类读不懂的证明来了",
+    "url": "https://aihot.news/items/o5zngxopb4x93yjjnyafkvgxa",
+    "time": "Sat, 10 Oct 2026 13:56:02 GMT",
+    "heat": "",
+    "summary": "MIT 工程教育副院长 Justin Solomon 在播客中谈到，OpenAI 模型上个月给出 Navier-Stokes 解失效的反例证明，但他和《Odd Lots》主持人读不到第二页。 🔗 阅读原文 via AIHOT · https://aihot.news/items/o5zngxopb4x93yjjnyafkvgxa"
+  },
+  {
+    "source": "AIHOT",
+    "title": "OpenAI 一次性发布 700 多份数学手稿，数学家们反应震惊与反感",
+    "url": "https://aihot.news/items/z9juuqdd3d8fejwabu0xzvbaa",
+    "time": "Sat, 10 Oct 2026 13:03:59 GMT",
+    "heat": "",
+    "summary": "OpenAI 于 2026 年 10 月 6 日在 GitHub 一次性发布 700 多份手稿，声称解决数百个未解数学问题，数学博客 Proofs and Prompts 收集了 100 多位研究者的回应。 🔗 阅读原文 via AIHOT · https://aihot.news/items/z9juuqdd3d8fejwabu0xzvbaa"
+  },
+  {
+    "source": "AIHOT",
+    "title": "State of AI Report 2026 速读：AI 加速 AI、千亿收入、电力瓶颈与安全",
+    "url": "https://aihot.news/items/lnphc0ojxpdl4tpb2zvpz8352",
+    "time": "Sat, 10 Oct 2026 05:26:34 GMT",
+    "heat": "",
+    "summary": "Nathan Benaich（Air Street Capital）发布第九份年度 State of AI Report 2026，分研究、产业、政治、安全、预测五部分，PDF 见 https://www.stateof.ai/State-of-AI-Report-2026.pdf。 🔗 阅读原文 via AIHOT · https://aihot.news/items/lnphc0ojxpdl4tpb2zvpz8352"
+  }
+]
