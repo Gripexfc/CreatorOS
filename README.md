@@ -31,6 +31,14 @@ make test
 make lint
 ```
 
+### Windows 一键安装与启动
+
+Windows 不需要 `make`。先把仓库克隆或下载到本地，确保电脑已安装 **Node.js 20+**（包含 npm）；安装脚本会检查 Python，并在需要时自动安装 `uv`。如果电脑没有 Python，请先安装 Python 3.12（安装时勾选 **Add Python to PATH**）。
+
+在项目根目录双击一次 `install-windows.bat`，它会创建 `.venv312`、安装后端依赖和前端依赖。以后双击 `start-windows.bat`，脚本会分别打开 API 和前端窗口，服务就绪后自动打开 `http://127.0.0.1:5173/#/create`。要停止项目，关闭这两个终端窗口即可。
+
+脚本使用项目目录自身定位文件，所以项目放在桌面或包含中文、空格的路径下都可以。运行数据仍写在本机的 `data/` 和 `runtime/`，不会提交到 Git。
+
 S2/S3/S4a/S4b/S4c 的安装、迁移幂等、画像版本/差异/恢复、简报版本、内容修订冲突、平台编辑、内容库回读、热点/指标 API、输入资产、热点入任务、导出、前端类型检查、前端单元测试、生产构建和 API 测试已经实际执行。当前生成仍使用离线模板适配器，不代表接入真实模型或发布平台。
 
 公众号真实适配器是显式选择的可选能力：设置 `CREATOROS_WECHAT_ADAPTER=browser` 后安装 `pip install -e '.[dev,wechat]'`，登录会话保存在本地 `CREATOROS_WECHAT_PROFILE_DIR`，不写入数据库或日志。扫码、登录过期恢复、封面上传、草稿提交和账号读取均由用户点击触发；Mock 状态和 CSV/JSON 导入不会被标为真实成功。
