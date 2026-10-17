@@ -69,12 +69,12 @@ class EaselAgentWorkflowService(WorkflowService):
     # Tool calls can be quiet while still healthy, but a whole stage with no
     # streamed token or Agent event is a useful signal that it has stopped.
     progress_timeouts = {
-        'discovery': 90,
-        'topic': 120,
-        'master': 120,
-        'adaptation': 180,
-        'quality': 120,
-        'archive': 120,
+        'discovery': 240,
+        'topic': 300,
+        'master': 300,
+        'adaptation': 360,
+        'quality': 240,
+        'archive': 240,
     }
 
     def __init__(self, outputs: Path, gateway, agent_runner, raw_stream_path: Path | None = None,
@@ -1101,6 +1101,8 @@ class EaselAgentWorkflowService(WorkflowService):
             self._mark(job, "archive", "completed", artifact=str(archive_path.relative_to(self.outputs)))
             self._debug_event(job, 'stage_finished', stage='archive', message='归档交付完成')
             with self.lock:
+                live = job.setdefault('live_stream', {})
+                live.update(status='completed', complete=True, error='', finished_at=time.time(), updated_at=time.time())
                 job.update(status="completed", current=None, content_status="draft", published=False)
                 self._save(job)
         except WorkflowInterruption as exc:
@@ -1115,6 +1117,9 @@ class EaselAgentWorkflowService(WorkflowService):
                 job.setdefault('live_stream', {}).update(
                     status=exc.status, complete=False, finished_at=time.time(), error=exc.reason,
                 )
+                for stream in (job.get('streaming_outputs') or {}).values():
+                    if isinstance(stream, dict) and not stream.get('complete'):
+                        stream.update(status=exc.status, complete=False, finished_at=time.time(), error=exc.reason)
                 job.update(status=exc.status, current=None, current_task='', content_status='draft', published=False)
                 self._save(job)
             self._debug_event(job, 'stage_blocked' if exc.status == 'blocked' else 'stage_failed', stage=current, message=exc.reason)
@@ -1123,6 +1128,9 @@ class EaselAgentWorkflowService(WorkflowService):
                 current = job.get("current") or "discovery"
                 job["stages"].setdefault(current, {}).update(status="failed", reason=self._failure_reason(exc), finished_at=time.time())
                 job.setdefault('live_stream', {}).update(status='failed', complete=False, finished_at=time.time(), error=self._failure_reason(exc))
+                for stream in (job.get('streaming_outputs') or {}).values():
+                    if isinstance(stream, dict) and not stream.get('complete'):
+                        stream.update(status='failed', complete=False, finished_at=time.time(), error=self._failure_reason(exc))
                 job.update(status="failed", current=None, content_status="draft", published=False)
                 self._save(job)
             self._debug_event(job, 'stage_failed', stage=current, message=self._failure_reason(exc))

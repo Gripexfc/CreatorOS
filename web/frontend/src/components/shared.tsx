@@ -14,7 +14,10 @@ const connectorStatusNames: Record<string, string> = {
   publish_succeeded: '已发布（等待真实回执）', failed: '处理失败', unsupported: '暂不支持', expired: '登录已过期',
 };
 export const connectorStateName = (value: string) => connectorStatusNames[value] ?? stateName(value);
-export const dateLabel = (value: string) => new Date(/(?:Z|[+-]\d\d:\d\d)$/.test(value) ? value : `${value}Z`).toLocaleString('zh-CN');
+// API timestamps normally carry an explicit UTC offset. When a manually
+// imported observation has no offset, keep it as local wall-clock time instead
+// of silently shifting it by the machine timezone.
+export const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN');
 export const errorText = (error: unknown) => error instanceof Error ? error.message : '操作失败，请重试';
 export const lines = (value: string) => value.split('\n').map(s => s.trim()).filter(Boolean);
 export const stringList = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];

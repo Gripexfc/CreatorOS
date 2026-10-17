@@ -444,6 +444,8 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
   background: var(--rail);
   border-color: var(--line);
   box-shadow: none;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .studio-refactor .studio-brand {
   gap: 10px;
@@ -693,6 +695,8 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
   .studio-refactor .studio-topbar { height: 59px; padding-inline: 16px; }
   .studio-refactor .studio-search-shell { width: 34px; padding: 7px 9px; }
   .studio-refactor .studio-search-shell input, .studio-refactor .studio-local, .studio-refactor .theme-control > span { display: none; }
+  .studio-refactor .studio-search-shell:focus-within { width: min(220px, calc(100vw - 112px)); }
+  .studio-refactor .studio-search-shell:focus-within input { display: block; }
   .studio-refactor .studio-utilities { gap: 7px; }
   .studio-refactor .studio-main { padding: 28px 16px 58px; }
   .studio-refactor .studio-page-heading, .studio-refactor .page-header { display: block; margin-bottom: 23px; padding-bottom: 21px; }

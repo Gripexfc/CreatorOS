@@ -157,7 +157,12 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
       return () => window.removeEventListener('creatoros:new-content', reset);
     }
     handoffInitialized.current = true;
-    const hotspot = readJson<{ title?: string; summary?: string; source?: string; url?: string }>('creatoros:selected-hotspot');
+    const hotspot = readJson<{ title?: string; summary?: string; source?: string; url?: string; platform?: Platform }>('creatoros:selected-hotspot');
+    let hotspotNotice = '';
+    try {
+      hotspotNotice = window.localStorage.getItem('creatoros:hotspot-handoff-notice') || '';
+      window.localStorage.removeItem('creatoros:hotspot-handoff-notice');
+    } catch { /* The topic hand-off remains usable without this notice. */ }
     const editing = readJson<Draft>('creatoros:editing-draft');
     const savedForm = readJson<ComposeFormSnapshot>('creatoros:compose-form');
     // These entries are hand-off envelopes, not durable page state. Consume
@@ -184,13 +189,14 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
         setGeneratedMeta({ platform: durable.platform, mode: durable.mode, skill: durable.skill, workflowId: durable.workflow_id || editing.workflowId || null, workflowArtifact: durable.output_artifact || editing.workflowArtifact || null, source: durableSource || editing.source || '', sourceUrl: durableUrl || editingSourceUrl });
       }).catch(() => { /* Local hand-off remains a valid fallback when the service is unavailable. */ });
     } else if (hotspot) {
-      sourceTopicRef.current = (hotspot.title || '').trim(); setTopic(sourceTopicRef.current); setContext(hotspot.summary || ''); setSource(hotspot.source || hotspot.url || ''); setSourceUrl(hotspot.url || '');
+      sourceTopicRef.current = (hotspot.title || '').trim(); setTopic(sourceTopicRef.current); setContext(hotspot.summary || ''); setSource(hotspot.source || hotspot.url || ''); setSourceUrl(hotspot.url || ''); if (hotspot.platform) { setPlatform(hotspot.platform); setMode('文章'); }
     } else if (savedForm) {
       // Keep the original form for legacy recovery before the persistence
       // effect writes this mount's initial empty state.
       pendingWorkflow.current = savedForm;
       setOutputKind(savedForm.outputKind === 'video' ? 'video' : 'standard'); setTopic(savedForm.topic || ''); setContext(savedForm.context || ''); setSource(savedForm.source || ''); setSourceUrl(savedForm.sourceUrl || ''); if (savedForm.platform) setPlatform(savedForm.platform); if (savedForm.mode) setMode(savedForm.mode); if (savedForm.skill) setSkill(savedForm.skill); if (savedForm.feedback) { setFeedback(savedForm.feedback); setFeedbackNote(savedForm.feedbackNote || ''); } if (savedForm.workflowId) { setWorkflowId(savedForm.workflowId); setWorkflowArtifact(savedForm.workflowArtifact || null); }
     }
+    if (hotspotNotice) setNotice(hotspotNotice);
     setFormReady(true);
     void listOfficialSkills().then(setSkills).catch(e => setError(errorText(e)));
     const reset = () => { workflowRunRef.current += 1; workflowWatchRef.current = false; userEdited.current = false; outputEdited.current = false; setOutputKind('standard'); pendingWorkflow.current = null; setWorkflowWatching(false); setWorkflowStartedAt(null); setDraftId(''); setWorkflowId(null); setWorkflowArtifact(null); setWorkflowJob(null); setGeneratedMeta(null); setQualityReview(''); setStreamingPreview(''); setStreamingComplete(false); setPreviousOutput(''); sourceTopicRef.current = ''; setTopic(''); setContext(''); setOutput(''); setSource(''); setSourceUrl(''); setNotice(''); setError(''); setGatewayBlocked(false); setShowAdvanced(false); setPlatform('wechat'); setMode('文章'); setSkill(defaultSkill('文章', 'wechat')); setUseProfile(false); setFeedback(''); setFeedbackNote(''); setFeedbackSaved(false); setGeneratedOutput(''); setFormReady(true); };
@@ -363,11 +369,22 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     }
     void cancelActiveWorkflow(workflowJob);
   };
+  const workflowMetadata = (job: WorkflowJob): { platform: Platform; mode: Mode; skill: string; source: string; sourceUrl: string } => {
+    const requested = job.platforms?.[0] === 'wechat-oa' ? 'wechat' : job.platforms?.[0] === 'xiaohongshu' ? 'xiaohongshu' : job.platforms?.[0] === 'douyin' ? 'douyin' : platform;
+    const metadata = generatedMeta?.workflowId === job.id ? generatedMeta : null;
+    return {
+      platform: metadata?.platform || requested,
+      mode: metadata?.mode || mode,
+      skill: metadata?.skill || (job as WorkflowJob & { skill?: string }).skill || skill,
+      source: metadata?.source || job.source || source,
+      sourceUrl: metadata?.sourceUrl || job.source_url || sourceUrl,
+    };
+  };
   const resumeWorkflow = async () => {
     if (!workflowJob || !['queued', 'running'].includes(workflowJob.status) || busy) return;
     setBusy(true); setError(''); setNotice(''); setGatewayBlocked(false); setStage('重新连接工作流');
     try {
-      await watchWorkflow(workflowJob, { platform, mode, skill, source, sourceUrl });
+      await watchWorkflow(workflowJob, workflowMetadata(workflowJob));
     } catch (e) {
       const message = errorText(e); setStage(''); setGatewayBlocked(isGatewayBlocked(message)); setError(workflowErrorText(e));
       workflowWatchRef.current = false; setWorkflowWatching(false);
@@ -528,7 +545,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     try {
       const job = await retryWorkflow(workflowId);
       setWorkflowJob(job);
-      await watchWorkflow(job, { platform, mode, skill, source, sourceUrl });
+      await watchWorkflow(job, workflowMetadata(job));
     } catch (e) { const message = errorText(e); setStage(''); setGatewayBlocked(isGatewayBlocked(message)); setError(workflowErrorText(e)); workflowWatchRef.current = false; setWorkflowWatching(false); }
     finally { setBusy(false); }
   };
@@ -573,7 +590,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
         : workflowStartedAt ? Math.max(0, Math.floor((workflowClock - workflowStartedAt) / 1000)) : 0;
   const workflowSlow = workflowIsActive && workflowElapsed >= 120;
   const workflowCurrentKey = workflowJob?.current || (workflowJob ? Object.entries(workflowJob.stages).find(([, value]) => value.status === 'running' || value.status === 'failed' || value.status === 'blocked' || value.status === 'interrupted')?.[0] : '');
-  const workflowCurrentLabel = workflowJob?.stages[workflowCurrentKey || '']?.label || stageLabels[workflowCurrentKey || ''] || stage || '准备工作流';
+  const workflowCurrentLabel = workflowJob?.stages[workflowCurrentKey || '']?.label || stageLabels[workflowCurrentKey || ''] || stage || (workflowJob?.status === 'completed' ? '流程已结束' : '准备工作流');
   const currentStage = workflowJob?.stages[workflowCurrentKey || ''];
   const stageStartedAt = timestampMs(currentStage?.started_at || currentStage?.started);
   const stageFinishedAt = timestampMs(currentStage?.finished_at || currentStage?.finished);
@@ -591,9 +608,24 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
       : '';
   const workflowDebugEvents = useMemo(() => {
     if (!workflowJob) return [] as WorkflowDebugEvent[];
-    const source = workflowJob.debug_events || workflowJob.debug_log || [];
-    return source.filter(Boolean).slice(-160);
+    const source = (workflowJob.debug_events || workflowJob.debug_log || []).filter(event => !(workflowJob.status === 'completed' && ['stage_blocked', 'stage_failed'].includes(event.kind || '')));
+    const lifecycle = source.filter(event => event && event.kind !== 'agent_event');
+    const latestAgentByStage = new Map<string, WorkflowDebugEvent>();
+    source.filter(event => event && event.kind === 'agent_event').forEach(event => {
+      latestAgentByStage.set(`${event.stage || ''}:${event.platform || ''}`, event);
+    });
+    const debugTime = (event: WorkflowDebugEvent) => {
+      const value = event.at || event.timestamp || event.time;
+      if (typeof value === 'number') return value;
+      const parsed = Date.parse(String(value || ''));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    return [...lifecycle, ...latestAgentByStage.values()]
+      .filter(Boolean)
+      .sort((left, right) => debugTime(left) - debugTime(right))
+      .slice(-80);
   }, [workflowJob?.debug_events, workflowJob?.debug_log]);
+  const workflowDebugRawCount = workflowJob ? (workflowJob.debug_events || workflowJob.debug_log || []).length : 0;
   const currentTask = String(workflowJob?.current_task || currentStage?.current_task || currentStage?.task || '').trim();
   const stageDetail = (item: typeof currentStage) => {
     if (!item) return '';
@@ -610,6 +642,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
   const easelWorkflow = workflowJob?.execution_mode === 'easel-agent-v1';
   const platformResult = workflowJob?.platform_outputs?.[workflowPlatform(generatedMeta?.platform || platform)];
   const outputArtifacts = Array.from(new Set(platformResult?.artifacts || []));
+  const workflowDisplayStatus = workflowJob?.status === 'completed' && (platformResult?.status === 'blocked' || Boolean(platformResult?.missing?.length)) ? '已完成 · 有待补齐' : workflowJob ? workflowStatus(workflowJob.status) : '';
   const adaptationIncomplete = Boolean(workflowJob && ['blocked', 'failed', 'interrupted'].includes(workflowJob.stages.adaptation?.status || ''));
   const retryFromPlatform = finalMissing && (!workflowJob || workflowJob.status === 'completed' || adaptationIncomplete);
   const resultLabel = platform === 'douyin' && outputKind === 'video' ? '成片' : platformOutputLabels[platform][mode];
@@ -638,11 +671,11 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     {notice && <Message>{notice}</Message>}
     {error && <Message error>{error}{gatewayBlocked && <><button className="link" onClick={() => navigate('settings')}>去模型设置</button><button className="link" disabled={handoffBusy || !topic.trim()} onClick={() => void saveAndContinue()}>{handoffBusy ? '正在保存主题…' : '保存主题并继续完整工作流'}</button></>}</Message>}
     {(workflowJob || busy) && <section ref={workflowProgressRef} className={`composer-workflow${compactWorkflow ? ' compact' : ''}`} aria-label={easelWorkflow ? '完整创作流程进度' : compactWorkflow ? '三段创作进度' : '六阶段创作进度'} aria-busy={busy || workflowWatching} aria-live="polite">
-      <div className="composer-workflow-head"><div><div className="composer-workflow-title">创作进度 · {busy ? '进行中' : retryFromPlatform ? '缺少平台终稿' : workflowJob ? workflowStatus(workflowJob.status) : '正在连接模型服务'}</div><p>{workflowJob ? `当前阶段：${workflowCurrentLabel} · ${workflowTimingLabel}${currentTask ? ` · ${currentTask}` : ''}` : '正在连接模型服务并创建内容任务，页面不会静默等待。'}</p></div><div className="composer-workflow-meta"><strong>{formatDuration(workflowElapsed)}</strong><small>本次处理用时</small></div></div>
+      <div className="composer-workflow-head"><div><div className="composer-workflow-title">创作进度 · {busy ? '进行中' : retryFromPlatform ? '缺少平台终稿' : workflowJob ? workflowDisplayStatus : '正在连接模型服务'}</div><p>{workflowJob ? `当前阶段：${workflowCurrentLabel} · ${workflowTimingLabel}${currentTask ? ` · ${currentTask}` : ''}` : '正在连接模型服务并创建内容任务，页面不会静默等待。'}</p></div><div className="composer-workflow-meta"><strong>{formatDuration(workflowElapsed)}</strong><small>本次尝试用时</small></div></div>
       {debugMode && workflowJob && <p className="debug-mode-note">{workflowJob.debug_mode ? '正在显示本次任务的执行步骤和耗时。' : '正在显示已有记录；详细调试记录将在下次新建任务时启用。'}</p>}
       {workflowJob ? <ol>{displayedWorkflowStages.map((group, index) => { const state = workflowStageState(group.keys); const item = workflowJob.stages[group.key]; return <li className={state.done ? 'done' : state.blocked ? 'blocked' : state.active ? 'active' : ''} key={group.key}><b>{state.done ? '✓' : state.blocked ? '!' : index + 1}</b><span>{group.label}<small>{state.active ? `进行中${stageDetail(item) ? ` · ${stageDetail(item)}` : ''}` : state.done ? `已完成${stageDetail(item) ? ` · ${stageDetail(item)}` : ''}` : state.blocked ? '需要重试' : '待开始'}</small>{debugMode && item?.current_task && <em>{item.current_task}</em>}</span></li>; })}</ol> : <div className="composer-workflow-preparing"><span className="workflow-pulse" />正在创建内容任务，通常几秒内会显示第一阶段。</div>}
       {workflowSlow && busy && <div className="composer-workflow-warning">已经等待 {formatDuration(workflowElapsed)}，模型可能仍在处理；点击“停止后台任务”会请求服务端终止本次任务，主题和素材会保留。</div>}
-      {debugMode && workflowJob && <details className="workflow-debug-panel" open><summary>系统执行日志（{workflowDebugEvents.length} 条）</summary>{workflowDebugEvents.length ? <ol>{workflowDebugEvents.map((event, index) => <li className={`debug-${event.level || 'info'}`} key={`${String(event.id ?? index)}-${index}`}><time>{formatDebugTime(event.at ?? event.timestamp ?? event.time)}</time><strong>{event.stage ? `${stageLabels[event.stage] || event.stage} · ` : ''}{debugEventText(event)}</strong>{event.tool && <code>{event.tool}</code>}{debugEventDuration(event) && <small>{debugEventDuration(event)}</small>}{event.details && <pre>{JSON.stringify(event.details, null, 2)}</pre>}</li>)}</ol> : <p>正在等待后端记录第一条事件……</p>}</details>}
+      {debugMode && workflowJob && <details className="workflow-debug-panel"><summary>系统执行日志（已显示 {workflowDebugEvents.length} 条，原始 {workflowDebugRawCount} 条）</summary>{workflowDebugEvents.length ? <ol>{workflowDebugEvents.map((event, index) => <li className={`debug-${event.level || 'info'}`} key={`${String(event.id ?? index)}-${index}`}><time>{formatDebugTime(event.at ?? event.timestamp ?? event.time)}</time><strong>{event.stage ? `${stageLabels[event.stage] || event.stage} · ` : ''}{debugEventText(event)}</strong>{event.tool && <code>{event.tool}</code>}{debugEventDuration(event) && <small>{debugEventDuration(event)}</small>}{event.details && <pre>{JSON.stringify(event.details, null, 2)}</pre>}</li>)}</ol> : <p>正在等待后端记录第一条事件……</p>}</details>}
       <div className="composer-workflow-actions">{busy && <button type="button" className="secondary" disabled={cancelBusy} onClick={stopWatchingWorkflow}>{cancelBusy ? '正在停止后台任务…' : '停止后台任务'}</button>}{!busy && workflowIsActive && <button type="button" className="secondary" onClick={() => void resumeWorkflow()}>继续查看状态</button>}{!busy && workflowJob && !workflowIsActive && (retryFromPlatform || workflowJob.status !== 'completed') && <button type="button" className="secondary" onClick={() => void retryCurrentWorkflow()}>{retryFromPlatform ? '从平台改写重试' : '从未完成阶段重试'}</button>}</div>
     </section>}
     {qualityReview && <details className="quality-review"><summary>查看发布前质量检查（不会混入正文或下载文件）</summary><pre>{qualityReview}</pre></details>}
@@ -660,14 +693,14 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
         <div className="result-picker" role="group" aria-label="选择交付内容"><button type="button" disabled={busy} aria-pressed={modeIncludes(mode, '文章')} className={modeIncludes(mode, '文章') ? 'selected' : ''} onClick={() => { markComposerEdited(); setMode('文章'); }}><StudioIcon name="file" size={18} /><span><strong>{platform === 'wechat' ? '整套公众号文章' : platform === 'xiaohongshu' ? '整套小红书笔记' : '抖音脚本'}</strong><small>{platform === 'wechat' ? '正文、配图和可复制的 HTML 排版' : platform === 'xiaohongshu' ? '卡片、发布文案、标题与话题' : '口播、分镜、字幕与封面方案，不含视频'}</small></span>{modeIncludes(mode, '文章') && <StudioIcon name="check" size={16} />}</button><button type="button" disabled={busy} aria-pressed={mode === '配图'} className={mode === '配图' ? 'selected' : ''} onClick={() => { markComposerEdited(); setMode('配图'); setOutputKind('standard'); }}><StudioIcon name="image" size={18} /><span><strong>只做配图</strong><small>按素材制作封面、卡片或信息图</small></span>{mode === '配图' && <StudioIcon name="check" size={16} />}</button></div>
         {platform === 'douyin' && mode !== '配图' && <label className="profile-consent"><input type="checkbox" checked={outputKind === 'video'} disabled={busy} onChange={e => { markComposerEdited(); setOutputKind(e.target.checked ? 'video' : 'standard'); }} /><span><strong>继续生成成片</strong><small>制作 9:16 竖屏视频；可能需要媒体模型配置。按量付费环节会先给出计划，等待单独确认。</small></span></label>}
         <small className="selection-summary">将生成：{platforms[platform].label}{resultLabel}。</small>
-        <div className="media-capability-note" role="note"><StudioIcon name="image" size={16} /><span><strong>{platform === 'douyin' && outputKind !== 'video' ? '脚本完成与视频完成分别显示' : '按真实产物显示完成状态'}</strong><small>只有实际生成并检查过的文件才会出现在产物列表；缺少素材或能力会保留待补齐状态。</small></span></div>
+        <div className="media-capability-note" role="note"><StudioIcon name="image" size={16} /><span><strong>{platform === 'douyin' && outputKind !== 'video' ? '脚本完成与视频完成分别显示' : '按真实产物显示完成状态'}</strong><small>{platform === 'xiaohongshu' ? '文本可以先生成；未配置独立生图模型时，卡片会单独标记待补齐。' : '只有实际生成并检查过的文件才会出现在产物列表；缺少素材或能力会保留待补齐状态。'}</small></span></div>
         <details className="advanced-skill" open={showAdvanced} onToggle={e => setShowAdvanced((e.currentTarget as HTMLDetailsElement).open)}><summary><span>更换写作方式</span><small>当前推荐：{labels[skill] || skill}</small></summary><select disabled={busy} value={skill} onChange={e => { markComposerEdited(); setSkill(e.target.value); }}>{availableSkills.map(item => <option key={item.name} value={item.name}>{labels[item.name] || item.name}{item.needsApi && !item.apiConfigured ? ' · 需配置' : ''}</option>)}</select></details>
         <label className="profile-consent"><input type="checkbox" checked={useProfile} onChange={e => setUseProfile(e.target.checked)} disabled={busy || !profile} /><span><strong>{profile ? `本次使用写作偏好 v${profileVersion || '?'}` : '暂无可用写作偏好'}</strong><small>仅发送平台风格、读者和已确认偏好到当前模型服务；身份与经历留在本机。</small></span></label>
         <label className="debug-preference"><input type="checkbox" checked={debugMode} onChange={e => setDebugMode(e.target.checked)} disabled={busy} /><span><strong>开启调试模式</strong><small>显示系统正在执行的步骤、任务、工具和耗时，设置会保存在本机。</small></span></label>
         <button className="primary composer-submit" disabled={busy || workflowIsActive || !topic.trim()} onClick={() => void generate()}><StudioIcon name="spark" size={18} />{busy ? '正在' + (stage || '创作') + '…' : workflowIsActive ? '已有任务处理中…' : `生成${platforms[platform].label}${resultLabel}`}</button><small className="truth-note">使用 Easel 的平台生成流程完成创作与检查；只生成本地产物，发布由你另行决定。</small>
       </section>
       <section className="output-panel"><div className="output-panel-head"><div><span className="page-kicker">YOUR DRAFT</span><h2>{output ? busy ? '上一份草稿（新生成中）' : '这就是你的草稿' : hasStreamingPreview ? streamingFailed ? '未完成预览' : streamingSettled ? '生成完成，正在载入终稿' : '正在实时生成' : '成稿会出现在这里'}</h2>{busy && previousOutput && <small className="output-preserved-note">原稿已保留；新结果完成后会替换这里。</small>}{hasStreamingPreview && <small className="streaming-preview-note">已收到 {streamingPreview.length.toLocaleString()} 字{streamingFailed ? '，本次未完成，不能保存' : '，任务完成后可编辑、保存和下载'}</small>}</div>{output && <span className="ready-state"><span />{busy ? '等待新结果' : '可编辑'}</span>}{hasStreamingPreview && !output && <span className="streaming-state"><span />{streamingFailed ? '未完成' : '实时接收'}</span>}</div>
-        {output ? <><textarea disabled={busy} className="output-editor" value={output} onChange={e => { userEdited.current = true; outputEdited.current = true; setError(''); setOutput(e.target.value); }} aria-label="生成结果" /><div className="learning-feedback"><div><strong>给下次生成留个建议</strong><small>这不会直接修改当前正文；选择后点“保存建议”，下次生成时会参考。</small>{feedback && <small className="feedback-status" role="status">{feedbackSaved ? '这条建议已保存，下次生成时会参考。' : '已选择，还没保存。'}</small>}</div><div className="feedback-buttons"><button type="button" disabled={busy} aria-pressed={feedback === 'keep'} className={feedback === 'keep' ? 'selected' : ''} onClick={() => { setFeedback('keep'); setFeedbackSaved(false); setNotice('已选择“像我”。如需记录，请点击“保存建议”。'); }}>像我</button><button type="button" disabled={busy} aria-pressed={feedback === 'adjust'} className={feedback === 'adjust' ? 'selected' : ''} onClick={() => { setFeedback('adjust'); setFeedbackSaved(false); setNotice('已选择“需要调整”。写下具体问题后，可以按这条意见重新生成。'); }}>需要调整</button>{feedback === 'adjust' && <button type="button" disabled={busy || !feedbackNote.trim()} onClick={() => void generate(feedbackNote)}>按这条意见重新生成</button>}{feedback && <button type="button" disabled={busy || feedbackSaved} onClick={() => { persistFeedback(platform, mode); }}>保存建议</button>}</div>{feedback && <input disabled={busy} value={feedbackNote} onChange={e => { setFeedbackNote(e.target.value); setFeedbackSaved(false); }} placeholder={feedback === 'keep' ? '哪一点最像你？可选' : '例如：把第三段写得更具体，删掉广告口吻'} />}</div><div className="output-actions"><button className="primary" disabled={saving || busy} onClick={() => void save()}><StudioIcon name="check" size={15} />{saving ? '正在保存…' : '保存到我的内容'}</button><button className="secondary" disabled={busy} onClick={download}><StudioIcon name="download" size={15} />下载 Markdown</button><button className="quiet-button" disabled={busy} onClick={() => { outputEdited.current = true; setOutput(''); }}>清空</button></div></> : hasStreamingPreview ? <><textarea disabled readOnly className="output-editor streaming-output" value={streamingPreview} aria-label="实时生成预览" /><p className="streaming-preview-footnote">这是模型正在返回的预览，尚未写入最终稿文件。</p></> : <div className="output-placeholder"><span><StudioIcon name="spark" size={23} /></span><h3>准备好了吗？</h3><p>左侧选好主题、平台和交付组合，点击生成，内容会在这里出现。</p></div>}
+        {output ? <><textarea disabled={busy} className="output-editor" value={output} onChange={e => { userEdited.current = true; outputEdited.current = true; setError(''); setOutput(e.target.value); }} aria-label="生成结果" /><div className="learning-feedback"><div><strong>给下次生成留个建议</strong><small>这不会直接修改当前正文；选择后点“保存建议”，下次生成时会参考。</small>{feedback && <small className="feedback-status" role="status">{feedbackSaved ? '这条建议已保存，下次生成时会参考。' : '已选择，还没保存。'}</small>}</div><div className="feedback-buttons"><button type="button" disabled={busy} aria-pressed={feedback === 'keep'} className={feedback === 'keep' ? 'selected' : ''} onClick={() => { setFeedback('keep'); setFeedbackSaved(false); setNotice('已选择“像我”。如需记录，请点击“保存建议”。'); }}>像我</button><button type="button" disabled={busy} aria-pressed={feedback === 'adjust'} className={feedback === 'adjust' ? 'selected' : ''} onClick={() => { setFeedback('adjust'); setFeedbackSaved(false); setNotice('已选择“需要调整”。写下具体问题后，可以按这条意见重新生成。'); }}>需要调整</button>{feedback === 'adjust' && <button type="button" disabled={busy || !feedbackNote.trim()} onClick={() => void generate(feedbackNote)}>按这条意见重新生成</button>}{feedback && <button type="button" disabled={busy || feedbackSaved} onClick={() => { persistFeedback(platform, mode); }}>保存建议</button>}</div>{feedback && <input disabled={busy} value={feedbackNote} onChange={e => { setFeedbackNote(e.target.value); setFeedbackSaved(false); }} placeholder={feedback === 'keep' ? '哪一点最像你？可选' : '例如：把第三段写得更具体，删掉广告口吻'} />}</div><div className="output-actions"><button className="primary" disabled={saving || busy} onClick={() => void save()}><StudioIcon name="check" size={15} />{saving ? '正在保存…' : '保存到我的内容'}</button><button className="secondary" disabled={busy} onClick={download}><StudioIcon name="download" size={15} />下载 Markdown</button><button className="quiet-button" disabled={busy} onClick={() => { workflowRunRef.current += 1; workflowWatchRef.current = false; setWorkflowWatching(false); setWorkflowJob(null); setWorkflowId(null); setWorkflowArtifact(null); setGeneratedMeta(null); setGeneratedOutput(''); setQualityReview(''); setStreamingPreview(''); setStreamingComplete(false); setFinalMissing(false); setFeedback(''); setFeedbackNote(''); setFeedbackSaved(false); setDraftId(''); setOutput(''); setNotice('已清空当前产物；主题和素材仍保留。'); }}>清空</button></div></> : hasStreamingPreview ? <><textarea disabled readOnly className="output-editor streaming-output" value={streamingPreview} aria-label="实时生成预览" /><p className="streaming-preview-footnote">这是模型正在返回的预览，尚未写入最终稿文件。</p></> : <div className="output-placeholder"><span><StudioIcon name="spark" size={23} /></span><h3>准备好了吗？</h3><p>左侧选好主题、平台和交付组合，点击生成，内容会在这里出现。</p></div>}
         {output && busy && streamingPreview && <section className="live-stream-panel" aria-live="polite"><div><strong>实时生成预览</strong><small>新内容正在分段返回，原稿仍保留在上方</small></div><textarea disabled readOnly className="output-editor streaming-output" value={streamingPreview} aria-label="新内容实时生成预览" /><p className="streaming-preview-footnote">已收到 {streamingPreview.length.toLocaleString()} 字，任务完成并通过校验后才会替换原稿。</p></section>}
         {platformResult && <section className="quality-review" aria-label="真实产物与校验"><h3>已生成的产物</h3><p>{readableStatus(platformResult.status)} · {platformResult.media_kind === 'script' ? '脚本，不含视频文件' : platformResult.media_kind === 'video' ? '视频制作' : platformResult.media_kind === 'image' ? '图文卡片' : '平台内容包'}</p>{platformResult.missing?.length ? <ul>{platformResult.missing.map((item, index) => <li key={`${item}-${index}`}>待补齐：{item}</li>)}</ul> : null}{outputArtifacts.length ? <ul>{outputArtifacts.map(path => <li key={path} style={{ marginBottom: 14 }}><a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer">{artifactLabel(path)} · {path.split('/').pop()}</a> <a href={mediaUrl(path)} download>下载</a>{isImageArtifact(path) && <a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 8 }}><img src={mediaUrl(path)} alt={`已生成图片：${path.split('/').pop()}`} loading="lazy" style={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 4 }} /></a>}{isVideoArtifact(path) && <video src={mediaUrl(path)} controls preload="metadata" style={{ display: 'block', maxWidth: '100%', maxHeight: 360, marginTop: 8 }} />}</li>)}</ul> : <p>还没有可下载的产物文件。</p>}{Boolean(platformResult.checks?.length) && <details><summary>查看产物校验</summary><ul>{platformResult.checks.map((check, index) => <li key={index}>{checkSummary(check)}</li>)}</ul></details>}{easelWorkflow && <small>本次流程：{platformResult.skill || '平台创作流程'} · 已记录 {workflowJob?.execution_receipts?.length || 0} 条执行回执。</small>}</section>}
       </section>

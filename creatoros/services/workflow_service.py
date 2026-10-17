@@ -313,13 +313,27 @@ class WorkflowService:
             job.pop('duration_seconds', None)
             job.pop('duration_ms', None)
             job['status'] = 'queued'
+            # A retry starts a new observable attempt. Clear the previous
+            # stream status so an old interruption/error cannot sit beside a
+            # fresh running or completed job in the UI.
+            job['live_stream'] = {
+                'stage': None, 'platform': None, 'text': '', 'complete': False,
+                'status': 'idle', 'started_at': None, 'updated_at': None,
+                'finished_at': None, 'chars': 0, 'error': '',
+            }
+            job['streaming_outputs'] = {
+                platform: self._new_stream_state() for platform in job.get('platforms') or []
+            }
             self.cancel_events[job_id] = threading.Event()
             # An explicit retry is the only place where a legacy failed job
             # may be upgraded. This lets a user recover an old master-stage
             # timeout with the compact path while preserving every old
             # artifact and attempt record. New background work is never
             # silently migrated.
-            if self.compose_runner is not None:
+            # Easel Agent jobs must retry through their original stage runner.
+            # Compact fallback is reserved for legacy/compact jobs; changing
+            # an Easel job here would skip research and platform checks.
+            if self.compose_runner is not None and job.get('execution_mode') != 'easel-agent-v1':
                 if job.get('execution_mode') != 'compact-v2':
                     job['migrated_from'] = job.get('migrated_from') or 'legacy-v1'
                 job['execution_mode'] = 'compact-v2'
@@ -428,6 +442,7 @@ class WorkflowService:
         event = {
             'id': uuid4().hex[:10],
             'at': now,
+            'attempt': job.get('attempt', 1),
             'kind': str(kind),
             'level': 'error' if kind in {'stage_failed', 'stage_blocked'} else 'success' if kind == 'stage_finished' else 'info',
             'stage': stage,
@@ -543,7 +558,25 @@ class WorkflowService:
             # platform directory that the Easel route exposes.  Treat a
             # legacy-only completion as repairable while accepting a valid
             # Easel platform directory even when it has no 08/09/10 alias.
-            contract_valid = job.get('execution_mode') != 'compact-v2'
+            contract_valid = job.get('execution_mode') not in {'compact-v2', 'easel-agent-v1'}
+            if job.get('execution_mode') == 'easel-agent-v1':
+                platform_output = (job.get('platform_outputs') or {}).get(platform) or {}
+                platform_dir = folder / platform
+                declared_artifacts = [str(item) for item in platform_output.get('artifacts') or [] if item]
+                artifacts_valid = bool(declared_artifacts) and all(self._artifact_is_valid(self.outputs, item) for item in declared_artifacts)
+                primary_valid = self._artifact_is_valid(self.outputs, platform_output.get('primary_text'))
+                contract_valid = platform_output.get('status') == 'completed' and (primary_valid or artifacts_valid)
+                if not contract_valid:
+                    contract_files = {'wechat-oa': ('article.md', 'article.html', 'meta.json'), 'xiaohongshu': ('note.md', 'meta.json'), 'douyin': ('script.md', 'meta.json')}.get(platform, ())
+                    contract_valid = platform_output.get('status') == 'completed' and bool(contract_files) and all(
+                        (platform_dir / name).is_file()
+                        and not (platform_dir / name).is_symlink()
+                        and bool((platform_dir / name).read_text(encoding='utf-8').strip())
+                        for name in contract_files
+                    )
+                if not contract_valid:
+                    missing.append(f'{platform}/platform package')
+                continue
             if job.get('execution_mode') == 'compact-v2':
                 platform_dir = folder / platform
                 contract_files = {

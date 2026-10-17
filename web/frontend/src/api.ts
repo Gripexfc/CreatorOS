@@ -158,25 +158,38 @@ type ApiRequestInit = RequestInit & { timeoutMs?: number };
 const request = async <T>(path: string, init?: ApiRequestInit): Promise<T> => {
   // Status polling must not hang forever when the local service or gateway
   // stops responding. Callers that provide their own AbortSignal keep control
-  // of the deadline; ordinary requests get a short local timeout.
+  // of cancellation, while ordinary requests get a short local timeout. The
+  // local timeout still applies when a caller supplies a signal (for example,
+  // model discovery cancels stale requests itself).
   const { timeoutMs = 15000, ...requestInit } = init || {};
-  const controller = requestInit.signal ? null : new AbortController();
-  const timeout = window.setTimeout(() => controller?.abort(), timeoutMs);
+  const controller = new AbortController();
+  let timedOut = false;
+  const callerSignal = requestInit.signal;
+  const forwardCallerAbort = () => controller.abort(callerSignal?.reason);
+  if (callerSignal) {
+    if (callerSignal.aborted) forwardCallerAbort();
+    else callerSignal.addEventListener('abort', forwardCallerAbort, { once: true });
+  }
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   let response: Response;
   try {
     response = await fetch(apiUrl(path), {
       ...requestInit,
       cache: requestInit.cache ?? 'no-store',
-      signal: requestInit.signal ?? controller?.signal,
+      signal: controller.signal,
       headers: { "Content-Type": "application/json", ...(requestInit.headers ?? {}) },
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError' && !requestInit.signal) {
+    if (timedOut) {
       throw new ApiError(408, '本地服务响应超时，请稍后重试。');
     }
     throw error;
   } finally {
     window.clearTimeout(timeout);
+    callerSignal?.removeEventListener('abort', forwardCallerAbort);
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {

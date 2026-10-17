@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { QuickCreatePage } from './QuickCreatePage';
 import { HotspotsPage } from './HotspotsPage';
 import { StudioLibraryPage } from './StudioLibraryPage';
@@ -33,8 +33,8 @@ const routes = [
   ['skills', '能力说明', 'spark', '查看可用能力'],
 ] as const;
 type RouteKey = (typeof routes)[number][0];
-const primaryKeys: readonly RouteKey[] = ['hotspots', 'create', 'library', 'profile', 'publish'];
-const utilityKeys: readonly RouteKey[] = ['breakdown', 'analytics', 'settings', 'accounts'];
+const primaryKeys: readonly RouteKey[] = ['overview', 'hotspots', 'create', 'library', 'profile', 'publish'];
+const utilityKeys: readonly RouteKey[] = ['breakdown', 'analytics', 'settings', 'accounts', 'drafts', 'outputs', 'chat', 'skills'];
 
 type ThemeMode = 'dark' | 'light' | 'system';
 type ThemeOption = { value: ThemeMode; label: string };
@@ -166,6 +166,7 @@ export const routeFromHash = (hash: string) => {
 export default function App() {
   const [route, setRoute] = useState(() => routeFromHash(window.location.hash));
   const [online, setOnline] = useState<boolean | null>(null);
+  const [globalSearch, setGlobalSearch] = useState('');
   const [theme, setTheme] = useState<ThemeMode>(() => {
     try {
       const saved = window.localStorage.getItem('creatoros:theme');
@@ -198,6 +199,21 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, []);
   const navigate = (path: string) => { window.location.hash = `/${path}`; };
+  const submitGlobalSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = globalSearch.trim();
+    if (!query) return;
+    // The search field is a real hand-off into the hotspot index. The query is
+    // kept in a short-lived envelope so the destination can load it before
+    // the next page mount without pretending this is a server-wide search.
+    if (route.view === 'hotspots') {
+      window.dispatchEvent(new CustomEvent('creatoros:global-search', { detail: query }));
+      return;
+    } else {
+      try { window.localStorage.setItem('creatoros:global-search', query); } catch { /* Search still navigates. */ }
+    }
+    navigate('hotspots');
+  };
   const renderNav = (keys: readonly RouteKey[]) => keys.map(key => {
     const item = routeByKey.get(key);
     if (!item) return null;
@@ -226,7 +242,7 @@ export default function App() {
     <div className="studio-body">
       <header className="studio-topbar">
         <div className="studio-breadcrumb"><span>我的知序空间</span><StudioIcon name="chevron" size={13} /><strong>{current[1]}</strong></div>
-        <div className="studio-utilities"><label className="studio-search-shell" aria-label="搜索工作区"><StudioIcon name="search" size={15} /><input placeholder="搜索内容或来源" /></label><span className="studio-local"><i className={online ? 'online' : ''} />{online === null ? '正在连接知序本地服务' : online ? '知序本地服务已连接' : '知序本地服务未连接'}</span><div className="theme-control"><span>外观</span><ThemeDropdown value={theme} onChange={setTheme} /></div></div>
+        <div className="studio-utilities"><form className="studio-search-shell" aria-label="搜索工作区" onSubmit={submitGlobalSearch}><StudioIcon name="search" size={15} /><input value={globalSearch} onChange={event => setGlobalSearch(event.target.value)} placeholder="搜索热点或来源，按回车" /></form><span className="studio-local"><i className={online ? 'online' : ''} />{online === null ? '正在连接知序本地服务' : online ? '知序本地服务已连接' : '知序本地服务未连接'}</span><div className="theme-control"><span>外观</span><ThemeDropdown value={theme} onChange={setTheme} /></div></div>
       </header>
       <main id="main" tabIndex={-1} className="studio-main" key={route.view + route.id}>
         {online === false && <div className="message error" role="alert">知序本地服务暂时无法连接，内容保存和读取可能受影响。<button className="link" onClick={() => check()}>重新检查</button></div>}

@@ -34,31 +34,56 @@ export function HotspotsPage({ navigate }: { navigate: (path: string) => void })
     catch (e) { if (!abort.signal.aborted) setError(`热点读取失败：${errorText(e)}`); }
     finally { if (!abort.signal.aborted) setLoading(false); }
   }, []);
-  useEffect(() => { void load(); void listHotspots().then(setSaved).catch(e => setError(errorText(e))); return () => controller.current?.abort(); }, [load]);
+  useEffect(() => {
+    let initialQuery = '';
+    try {
+      initialQuery = window.localStorage.getItem('creatoros:global-search') || '';
+      window.localStorage.removeItem('creatoros:global-search');
+    } catch { /* Search is optional when local storage is unavailable. */ }
+    if (initialQuery) setQuery(initialQuery);
+    const applyGlobalQuery = (event: Event) => {
+      const query = (event as CustomEvent<string>).detail;
+      if (typeof query !== 'string') return;
+      setQuery(query);
+      setExpanded([]);
+    };
+    window.addEventListener('creatoros:global-search', applyGlobalQuery);
+    void load(); void listHotspots().then(setSaved).catch(e => setError(errorText(e)));
+    return () => {
+      window.removeEventListener('creatoros:global-search', applyGlobalQuery);
+      controller.current?.abort();
+    };
+  }, [load]);
   const selectTopic = (row: { title: string; summary: string; canonical_url: string; source_name: string }) => {
-    window.localStorage.setItem('creatoros:selected-hotspot', JSON.stringify({ title: row.title, summary: row.summary, url: row.canonical_url, source: row.source_name }));
-    window.localStorage.removeItem('creatoros:editing-draft'); window.localStorage.removeItem('creatoros:compose-form'); navigate('create');
+    try {
+      window.localStorage.setItem('creatoros:selected-hotspot', JSON.stringify({ title: row.title, summary: row.summary, url: row.canonical_url, source: row.source_name, platform: 'xiaohongshu' }));
+      window.localStorage.removeItem('creatoros:editing-draft'); window.localStorage.removeItem('creatoros:compose-form');
+    } catch {
+      // The topic is still useful even when browser storage is full or blocked.
+    }
+    navigate('create');
   };
   const choose = async (board: TrendBoard, item: TrendItem) => {
     if (busy) return;
     const existing = saved.find(value => value.canonical_url === item.url);
-    // 先把选题交给创作页，再尝试写入热点库。这样本地 API 暂时不可用时，
-    // “写这个”仍然能完成用户最直接的下一步。
     const selected = existing || {
       title: item.title,
       canonical_url: item.url,
       source_name: `${board.label}热榜`,
       summary: item.summary,
     };
-    selectTopic(selected);
-    if (existing) return;
     setBusy(true); setError('');
     try {
-      const row = await createHotspot({ title: item.title, canonical_url: item.url, source_name: `${board.label}热榜`, source_kind: 'hotlist', summary: item.summary, fact_status: 'unverified', heat_status: 'listed', relevance_reason: '', platform_fit: {}, needs_human_review: true, evidence: [{ evidence_type: 'hotlist', source_url: board.source_url || item.url, claim: `收录于${board.label}热榜`, value: { rank: item.rank, hot: item.hot, fetched_at: board.fetched_at }, verification_status: 'unverified' }] });
-      setSaved(current => [row, ...current.filter(value => value.canonical_url !== row.canonical_url)]);
+      if (!existing) {
+        const row = await createHotspot({ title: item.title, canonical_url: item.url, source_name: `${board.label}热榜`, source_kind: 'hotlist', summary: item.summary, fact_status: 'unverified', heat_status: 'listed', relevance_reason: '', platform_fit: {}, needs_human_review: true, evidence: [{ evidence_type: 'hotlist', source_url: board.source_url || item.url, claim: `收录于${board.label}热榜`, value: { rank: item.rank, hot: item.hot, fetched_at: board.fetched_at }, verification_status: 'unverified' }] });
+        setSaved(current => [row, ...current.filter(value => value.canonical_url !== row.canonical_url)]);
+      }
+      selectTopic(selected);
     } catch (e) {
-      // 选题内容已经写入本地创作页，保存失败只作为提示，不阻断创作。
-      setError(`已进入创作页，热点暂未同步：${errorText(e)}`);
+      // Keep the immediate creative hand-off usable, but carry the failed
+      // save into the destination so the user can see what was not persisted.
+      try { window.localStorage.setItem('creatoros:hotspot-handoff-notice', `已进入创作页，热点暂未同步：${errorText(e)}`); } catch { /* The topic hand-off still works. */ }
+      selectTopic(selected);
     } finally { setBusy(false); }
   };
   const startBlank = () => { window.localStorage.removeItem('creatoros:selected-hotspot'); window.localStorage.removeItem('creatoros:editing-draft'); window.localStorage.removeItem('creatoros:compose-form'); navigate('create'); };

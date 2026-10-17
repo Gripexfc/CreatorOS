@@ -396,12 +396,9 @@ export function ModelSettingsPage() {
       } else {
         hydrate(nextProvider, nextRow);
       }
-      void discoverFor(nextProvider, nextRow, draft ? {
-        baseUrl: draft.baseUrl,
-        key: draft.key,
-        model: draft.model,
-        name: draft.name,
-      } : {});
+      // Model discovery is explicit. Loading the settings page must not start
+      // a remote request that locks the form before a user can edit the URL or
+      // key, especially for a custom OpenAI-compatible endpoint.
       setHydrated(true);
     } else {
       const nextProvider = providerPreset(readStoredActiveProvider() || 'deepseek');
@@ -453,12 +450,8 @@ export function ModelSettingsPage() {
     } else {
       hydrate(nextPreset, nextRow);
     }
-    void discoverFor(nextPreset, nextRow, draft ? {
-      baseUrl: draft.baseUrl,
-      key: draft.key,
-      model: draft.model,
-      name: draft.name,
-    } : {});
+    // Selecting a provider only hydrates its draft. Fetch the catalog after
+    // the user has confirmed the endpoint and key with “获取模型”.
     setNotice('');
     setError('');
     setTestResults([]);
@@ -501,6 +494,9 @@ export function ModelSettingsPage() {
         key: key.trim(),
         primary,
       }]);
+      if (response.ok === false || /失败|未完成|未能启动/i.test(response.note || '')) {
+        throw new Error(response.note || '本地创作服务没有完成配置同步');
+      }
       const nextRows = response.channels.chat.rows || [];
       const nextRow = editableRowFor(nextRows, preset);
       setRows(nextRows);
@@ -578,14 +574,23 @@ export function ModelSettingsPage() {
   const primaryPassed = primaryResults.some(result => result.ok);
   const primaryFailed = primaryResults.length > 0 && primaryResults.every(result => !result.ok);
   const backupFailed = backupResults.some(result => !result.ok);
+  const hasUnsavedChanges = Boolean(
+    (current && (model.trim() !== current.model.trim()
+      || normalizeBaseUrl(baseUrl || preset.baseUrl) !== normalizeBaseUrl(displayBaseUrl(current))
+      || Boolean(key.trim())
+      || (preset.slot === 'custom' && name.trim() !== (current.name || '').trim())
+      || primary !== (current.role === '主')))
+    || (!current && (model.trim() || baseUrl.trim() || key.trim() || name.trim())),
+  );
+  const verifiedPrimary = primaryPassed && !hasUnsavedChanges;
   // 兼容旧配置无法从 rows 找到主模型的情况：只有所有结果都失败时才判定整体失败。
   const testFailed = primaryResults.length ? primaryFailed : testResults.length > 0 && testResults.every(result => !result.ok);
-  const partialBackupFailure = primaryPassed && backupFailed;
+  const partialBackupFailure = verifiedPrimary && backupFailed;
   const gatewayLabel = loading
     ? '正在读取'
-    : primaryPassed && partialBackupFailure
+    : verifiedPrimary && partialBackupFailure
       ? '主模型可用，备用模型异常'
-      : primaryPassed
+      : verifiedPrimary
         ? '连接已验证'
         : testFailed
           ? '模型验证失败'
@@ -594,7 +599,9 @@ export function ModelSettingsPage() {
             : gateway?.configured
               ? '配置已保存，模型服务未启动'
               : '还没配置模型服务';
-  const gatewayTitle = primaryPassed
+  const gatewayTitle = hasUnsavedChanges
+    ? '有未保存修改，需要重新测试'
+    : verifiedPrimary
     ? '连接成功，可以开始创作'
     : testFailed
       ? '模型暂时不可用'
@@ -603,7 +610,9 @@ export function ModelSettingsPage() {
         : gateway?.configured
           ? '配置已保存，模型服务还没启动'
           : '先配置并测试模型';
-  const gatewayDescription = primaryPassed
+  const gatewayDescription = hasUnsavedChanges
+    ? '你改动了服务地址、模型或 API Key；保存并测试后，新的配置才会被验证。'
+    : verifiedPrimary
     ? partialBackupFailure
       ? `主模型已经通过一次最小生成测试，可以开始创作；${backupResults.filter(result => !result.ok).length} 个备用模型检查失败，可稍后处理。`
       : '主模型已经通过一次最小生成测试，可以开始创作。你可以回到研究参考内容或开始创作。'
@@ -615,8 +624,10 @@ export function ModelSettingsPage() {
           ? '配置已经保存，但模型服务还没启动；启动后点击“保存并测试”。'
           : '先选择模型服务商、模型并填写 API Key，再点击“保存并测试”。';
   const modelOptions = model && !modelIsKnown ? [model, ...availableModels] : availableModels;
-  const feedbackState = primaryPassed ? (partialBackupFailure ? 'warning' : 'success') : testFailed ? 'error' : notice ? 'success' : 'info';
-  const feedbackTitle = primaryPassed
+  const feedbackState = hasUnsavedChanges ? 'warning' : verifiedPrimary ? (partialBackupFailure ? 'warning' : 'success') : testFailed ? 'error' : notice ? 'success' : 'info';
+  const feedbackTitle = hasUnsavedChanges
+    ? '有未保存修改'
+    : verifiedPrimary
     ? (partialBackupFailure ? '主模型已连接，备用模型需要处理' : '模型连接成功')
     : testFailed
       ? '模型连接未通过'
@@ -686,8 +697,8 @@ export function ModelSettingsPage() {
             </div>
           </div>
 
-          <details className="model-advanced">
-            <summary>高级设置 <span>通常不用改</span></summary>
+          <details className="model-advanced" open>
+            <summary>服务地址与高级设置 <span>服务商或兼容接口需要填写</span></summary>
             <div className="model-advanced-grid">
               {preset.slot === 'custom' && !preset.providerName && <label>服务商标识<input value={name} onChange={(event) => {
                   const nextName = event.target.value;
