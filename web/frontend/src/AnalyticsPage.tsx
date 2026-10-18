@@ -170,7 +170,7 @@ function IntegrationGuide() {
   ];
   return <section className="analytics-card analytics-guide">
     <div className="analytics-section-heading">
-      <div><span className="kicker">DATA ACCESS GUIDE</span><h2>三平台怎么把数据交给知序</h2></div>
+      <div><h2>三平台怎么把数据交给知序</h2></div>
       <span className="analytics-section-note">人工导入不会触碰账号登录态</span>
     </div>
     <p className="analytics-guide-intro">先在平台后台导出表现数据，再回到本页“导入数据”上传。平台后台的菜单名称可能随改版略有变化，按“数据中心 / 内容分析”一类入口查找即可。</p>

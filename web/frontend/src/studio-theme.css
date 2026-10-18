@@ -34,7 +34,7 @@
   --shadow-card: 0 12px 32px #050b0718;
   --shadow-float: 0 20px 48px #050b0728;
   --shadow: var(--shadow-card);
-  --font-display: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+  --font-display: 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --radius-card: 14px;
   --radius-control: 8px;
 }
@@ -186,7 +186,7 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
 .platform-picker button:hover, .result-picker button:hover { border-color: var(--accent); }
 .platform-picker small, .result-picker small { color: var(--muted); }
 .advanced-skill, .model-advanced, .composer-divider { border-color: var(--line); }
-.profile-context-strip { padding: 16px 18px; margin: 0 0 24px; color: var(--ink); background: var(--surface); border-color: var(--line); border-left: 2px solid var(--accent); border-radius: 8px; }
+.profile-context-strip { padding: 16px 18px; margin: 0 0 24px; color: var(--ink); background: var(--surface); border-color: var(--line); border-left: 1px solid var(--line-strong); border-radius: 8px; }
 .profile-context-strip .page-kicker { display: none; }
 .profile-context-strip strong { color: var(--ink); font-size: 13px; }
 .profile-context-strip small, .source-chip, .truth-note { color: var(--muted); }
@@ -585,7 +585,7 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
 /* Quick create page: evidence first, then a calm writing surface. */
 .studio-refactor .create-heading { margin-bottom: 26px; }
 .studio-refactor .create-heading h1 { max-width: 620px; }
-.studio-refactor .profile-context-strip { margin: 0 0 22px; padding: 14px 17px; border-color: #cfe0d3; border-left: 3px solid var(--forest); border-radius: 11px; background: var(--surface); }
+.studio-refactor .profile-context-strip { margin: 0 0 22px; padding: 14px 17px; border-color: #cfe0d3; border-left: 1px solid var(--line-strong); border-radius: 11px; background: var(--surface); }
 .studio-refactor .profile-context-strip .page-kicker { display: block; }
 .studio-refactor .profile-context-strip strong { color: var(--ink); }
 .studio-refactor .profile-context-strip small { color: var(--muted); }
@@ -618,7 +618,7 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
   margin: 0 0 16px;
   padding: 15px 17px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--forest);
+  border-left: 1px solid var(--line-strong);
   border-radius: 11px;
   background: var(--surface);
 }
@@ -942,7 +942,7 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
   margin-top: 23px;
   padding: 17px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--forest);
+  border-left: 1px solid var(--line-strong);
   border-radius: 11px;
   background: var(--surface-muted);
 }
@@ -1405,7 +1405,7 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
 .xhs-workbench-page .profile-context-strip {
   margin-bottom: 15px;
   border: 1px solid rgba(103, 171, 184, .24);
-  border-left: 3px solid var(--xhs-cyan);
+  border-left: 1px solid var(--line-strong);
   border-radius: 14px;
   background: rgba(255, 255, 255, .56);
   box-shadow: 0 14px 34px rgba(41, 111, 136, .08);
@@ -1601,3 +1601,109 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
     padding: 10px 12px;
   }
 }
+.studio-refactor .studio-brand-copy small { display: none; }
+
+/* Chinese product polish: solid reading surfaces, calmer type, and menus that
+   never let the page behind show through the options. */
+:root:not([data-theme='dark']) .studio-refactor {
+  --paper: #f1f7f7;
+  --surface: #ffffff;
+  --surface-muted: #edf5f4;
+  --control: #ffffff;
+  --output: #f8fbfa;
+  --rail: #ffffff;
+  --ink: #173747;
+  --muted: #5d7480;
+  --faint: #718892;
+  --line: #d9e7e7;
+  --line-strong: #b8cecf;
+  --accent: #1ca8b7;
+  --accent-soft: #e3f4f3;
+  --forest: #1c536d;
+  --forest-deep: #16465b;
+  --forest-soft: #e5f3f1;
+  --green: #1c536d;
+  --mint: #e5f3f1;
+  --gold: #c98d27;
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --shadow-card: 0 12px 30px rgba(34, 95, 109, .08);
+  --shadow-float: 0 18px 42px rgba(24, 65, 75, .18);
+  background: var(--paper);
+}
+:root:not([data-theme='dark']) .studio-refactor,
+:root:not([data-theme='dark']) .studio-refactor .studio-sidebar,
+:root:not([data-theme='dark']) .studio-refactor .studio-topbar {
+  background-image: none;
+  backdrop-filter: none;
+}
+:root:not([data-theme='dark']) .studio-refactor .studio-sidebar { background: #ffffff; box-shadow: 8px 0 24px rgba(34, 95, 109, .05); }
+:root:not([data-theme='dark']) .studio-refactor .studio-topbar { background: #f8fbfb; }
+:root:not([data-theme='dark']) .studio-refactor .studio-main::before { display: none; }
+:root:not([data-theme='dark']) .studio-refactor .panel,
+:root:not([data-theme='dark']) .studio-refactor .composer-panel,
+:root:not([data-theme='dark']) .studio-refactor .output-panel,
+:root:not([data-theme='dark']) .studio-refactor .profile-studio-card,
+:root:not([data-theme='dark']) .studio-refactor .profile-guide-card,
+:root:not([data-theme='dark']) .studio-refactor .workflow,
+:root:not([data-theme='dark']) .studio-refactor .workspace-main > .panel,
+:root:not([data-theme='dark']) .studio-refactor .model-config-panel,
+:root:not([data-theme='dark']) .studio-refactor .model-side-panel,
+:root:not([data-theme='dark']) .studio-refactor .library-draft-list,
+:root:not([data-theme='dark']) .studio-refactor .library-draft-detail,
+:root:not([data-theme='dark']) .studio-refactor .discovery-board,
+:root:not([data-theme='dark']) .studio-refactor .analytics-card,
+:root:not([data-theme='dark']) .studio-refactor .publish-card {
+  background: #ffffff;
+  border-color: var(--line);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: none;
+}
+.studio-refactor .studio-brand-copy strong { font-size: 18px; letter-spacing: -.04em; }
+.studio-refactor .context-label { display: block; margin-bottom: 5px; color: var(--forest); font-size: 11px; font-weight: 700; }
+.studio-refactor .studio-page-heading h1,
+.studio-refactor .page-header h1 { font-size: clamp(29px, 3vw, 42px); line-height: 1.18; letter-spacing: -.045em; }
+.studio-refactor .studio-page-heading p,
+.studio-refactor .page-header p { font-size: 13px; line-height: 1.7; }
+.studio-refactor .composer-panel-head h2,
+.studio-refactor .output-panel-head h2 { font-size: 20px; line-height: 1.3; }
+.studio-refactor .studio-nav-item { font-size: 13px; }
+.studio-refactor input,
+.studio-refactor textarea,
+.studio-refactor select,
+.studio-refactor button { font-family: var(--font-display); }
+
+/* Every custom popup gets an opaque surface and a local stacking context. */
+.studio-refactor .model-select-menu,
+.studio-refactor .theme-select-menu,
+.studio-refactor .analytics-platform-menu,
+.studio-refactor .profile-choice-menu {
+  z-index: 100;
+  opacity: 1;
+  background: #ffffff;
+  background-image: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--shadow-float);
+}
+:root[data-theme='dark'] .studio-refactor .model-select-menu,
+:root[data-theme='dark'] .studio-refactor .theme-select-menu,
+:root[data-theme='dark'] .studio-refactor .analytics-platform-menu,
+:root[data-theme='dark'] .studio-refactor .profile-choice-menu { background: #18211c; }
+.studio-refactor .model-select-menu button,
+.studio-refactor .theme-select-menu button,
+.studio-refactor .analytics-platform-menu button,
+.studio-refactor .profile-choice-menu button { opacity: 1; }
+
+/* The workbench is an editor, so its text fields and output must read as
+   paper, never as another translucent layer over the page. */
+.xhs-workbench-page .composer-panel,
+.xhs-workbench-page .output-panel,
+.xhs-workbench-page .profile-context-strip,
+.xhs-workbench-page .composer-label input,
+.xhs-workbench-page .composer-label textarea,
+.xhs-workbench-page .advanced-skill select,
+.xhs-workbench-page .learning-feedback input,
+.xhs-workbench-page .platform-picker button,
+.xhs-workbench-page .result-picker button { background: #ffffff; backdrop-filter: none; }
+.xhs-workbench-page .output-panel { background: #fbfdfc; }

@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
-  <title>知序 ZIXU</title>
-  <rect width="64" height="64" rx="16" fill="#17251B"/>
-  <path d="M17 19H47L17 45H47" stroke="#B7EE70" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="47" cy="45" r="2.5" fill="#F2FFE5"/>
+  <title>知序创作台</title>
+  <rect width="64" height="64" rx="18" fill="#16465B"/>
+  <path d="M14 23.5C20.3 20.6 26.8 21.2 32 25.1V48c-5.2-3.9-11.7-4.5-18-1.6V23.5Z" fill="#E3F6F4"/>
+  <path d="M50 23.5C43.7 20.6 37.2 21.2 32 25.1V48c5.2-3.9 11.7-4.5 18-1.6V23.5Z" fill="#9DE6DC"/>
+  <path d="M32 24.8V48" stroke="#16465B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M45 12.5l1.5 4.2 4.2 1.5-4.2 1.5-1.5 4.2-1.5-4.2-4.2-1.5 4.2-1.5 1.5-4.2Z" fill="#F4C75F"/>
 </svg>

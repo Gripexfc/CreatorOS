@@ -75,7 +75,7 @@ export function ChatPage({ navigate }: { navigate: Navigate }) {
     </PageHeader>
     {notice && <div className="message error" role="status">{notice}</div>}
     <section className="panel creator-chat">
-      <div className="creator-chat-head"><div><span className="kicker">CREATOROS CHAT</span><h2>先问一个具体问题</h2></div><span className="state">本地会话</span></div>
+      <div className="creator-chat-head"><div><h2>先问一个具体问题</h2></div><span className="state">本地会话</span></div>
       <div className="creator-chat-log" aria-live="polite">{messages.length === 0 ? <div className="empty"><h2>还没有消息</h2><p>可以从来源核验、选题角度、平台改写或质量检查开始。</p></div> : messages.map((message, index) => <article className={`creator-chat-message ${message.role} ${message.blocked ? 'blocked' : ''}`} key={index}><span>{message.role === 'user' ? '你' : '知序'}</span><p>{message.content || (busy && index === messages.length - 1 ? '正在连接模型服务…' : '')}</p></article>)}</div>
       <div className="creator-chat-compose"><textarea aria-label="输入研究问题、改写要求或平台限制" rows={3} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder="输入研究问题、改写要求或平台限制…" disabled={busy} /><div className="action-row"><small className="hint">Enter 发送 · Shift+Enter 换行 · 不会伪造模型结果</small>{busy ? <button className="secondary" onClick={() => { stopRequested.current = true; abort.current?.abort(); }}>停止</button> : <button className="primary" disabled={!input.trim()} onClick={() => void send()}>发送</button>}</div></div>
     </section>

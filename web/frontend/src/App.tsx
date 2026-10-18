@@ -190,7 +190,7 @@ export default function App() {
   }, []);
   const current = route.view === 'workspace' ? routes.find(([key]) => key === 'create')! : routes.find(([key]) => key === route.view) || routes[1];
   const routeByKey = useMemo(() => new Map(routes.map(routeItem => [routeItem[0], routeItem])), []);
-  useEffect(() => { document.title = `知序 · ${current[1]}`; }, [current]);
+  useEffect(() => { document.title = `知序创作台 · ${current[1]}`; }, [current]);
   const check = (showPending = true) => { if (showPending) setOnline(null); void getStatus().then(() => setOnline(true)).catch(() => setOnline(false)); };
   useEffect(() => {
     check();
@@ -229,9 +229,9 @@ export default function App() {
   return <div className="studio studio-refactor">
     <a className="studio-skip" href="#main">跳到内容</a>
     <aside className="studio-sidebar" aria-label="主导航">
-      <a className="studio-brand" href="#/hotspots" aria-label="知序 ZIXU STUDIO 内容工作台">
-        <img className="studio-brand-mark" src="/brand/zixu-mark.svg?v=3" width="32" height="32" alt="" />
-        <span className="studio-brand-copy"><strong>知序</strong><small>ZIXU STUDIO</small></span>
+      <a className="studio-brand" href="#/hotspots" aria-label="知序创作台">
+        <img className="studio-brand-mark" src="/brand/zixu-mark.svg?v=4" width="32" height="32" alt="" />
+        <span className="studio-brand-copy"><strong>知序创作台</strong></span>
       </a>
       <div className="studio-workspace"><div><strong>林屿的工作区</strong><small>本地私有空间</small></div></div>
       <nav className="studio-nav studio-nav-primary" aria-label="工作台导航"><span className="studio-nav-heading">工作台</span>{renderNav(primaryKeys)}</nav>

@@ -688,7 +688,7 @@ export function ModelSettingsPage() {
 
   return (
     <>
-      <PageHeader title="模型设置" description="选择模型服务商和模型，填写 API Key（访问密钥）后即可测试模型服务。" />
+      <PageHeader title="模型设置" description="选择模型服务商和模型，填写访问密钥后即可测试模型服务。" />
       {notice && <div className={`model-feedback ${feedbackState}`} role="status" aria-live="polite"><span className="model-feedback-icon" aria-hidden="true">{feedbackState === 'success' ? '✓' : feedbackState === 'warning' ? '!' : 'i'}</span><div><strong>{feedbackTitle}</strong><p>{notice}</p></div></div>}
       {error && <Message error>{error}</Message>}
 
@@ -697,7 +697,7 @@ export function ModelSettingsPage() {
           <div className="model-config-heading">
             <div>
               <h2 id="model-config-title">配置模型服务</h2>
-              <p>选择模型服务商和模型，通常只需要补充 API Key（访问密钥）。</p>
+              <p>选择模型服务商和模型，通常只需要补充访问密钥。</p>
             </div>
             <span className={`model-status ${verifiedPrimary && !partialBackupFailure ? 'online' : ''}`}><i aria-hidden="true" />{gatewayLabel}</span>
           </div>
@@ -715,7 +715,7 @@ export function ModelSettingsPage() {
             </div>
 
             <div className="model-field">
-              <div className="model-field-label"><div><label htmlFor="model-choice">模型</label><small>先填写地址和 Key，再获取真实列表；也可以手填模型 ID</small></div><button type="button" className="quiet-button model-fetch-button" disabled={loading || saving || testing || !hydrated || discoveringModels} onClick={() => void discoverFor(preset, current, { baseUrl, key, model, name })}>{discoveringModels ? '读取中…' : '获取模型'}</button></div>
+              <div className="model-field-label"><div><label htmlFor="model-choice">模型</label><small>先填写地址和访问密钥，再获取真实列表；也可以手填模型编号</small></div><button type="button" className="quiet-button model-fetch-button" disabled={loading || saving || testing || !hydrated || discoveringModels} onClick={() => void discoverFor(preset, current, { baseUrl, key, model, name })}>{discoveringModels ? '读取中…' : '获取模型'}</button></div>
               <ModelDropdown
                 id="model-choice"
                 value={modelIsKnown ? model : CUSTOM_MODEL_VALUE}
@@ -739,7 +739,7 @@ export function ModelSettingsPage() {
             </div>
 
             <div className="model-field model-key-field">
-              <div className="model-field-label"><label htmlFor="model-key">API Key（访问密钥）</label><span className="model-key-meta">{current?.keyMasked && <small>{clearKey ? '保存时会移除已保存密钥' : `已保存 ${current.keyMasked}，留空即可沿用`}</small>}{current?.keyMasked && <button type="button" className="model-key-clear" onClick={() => { setClearKey(value => !value); setKey(''); }} disabled={loading || saving || testing}>{clearKey ? '撤销清除' : '清除密钥'}</button>}{!current?.keyMasked && <small>服务商提供，只在本机保存，不会显示明文</small>}</span></div>
+              <div className="model-field-label"><label htmlFor="model-key">访问密钥</label><span className="model-key-meta">{current?.keyMasked && <small>{clearKey ? '保存时会移除已保存密钥' : `已保存 ${current.keyMasked}，留空即可沿用`}</small>}{current?.keyMasked && <button type="button" className="model-key-clear" onClick={() => { setClearKey(value => !value); setKey(''); }} disabled={loading || saving || testing}>{clearKey ? '撤销清除' : '清除密钥'}</button>}{!current?.keyMasked && <small>服务商提供，只在本机保存，不会显示明文</small>}</span></div>
               <input id="model-key" className="model-key-input" type="password" value={key} onChange={(event) => {
                 const nextKey = event.target.value;
                 rememberDraft(providerId, { model, baseUrl, key: nextKey, name, primary });
@@ -790,7 +790,7 @@ export function ModelSettingsPage() {
 
         <aside className="model-side-panel" aria-label="模型配置说明">
           <div className="model-side-status"><span className={`model-side-mark ${primaryPassed ? 'is-success' : testFailed ? 'is-error' : ''}`} aria-hidden="true">{primaryPassed ? '✓' : testFailed ? '!' : '·'}</span><strong>{gatewayTitle}</strong><p>{gatewayDescription}</p></div>
-          <div className="model-side-list"><h3>你只需要准备</h3><ul><li>一个模型服务商账号</li><li>一个 API Key（访问密钥）</li><li>一个可用的模型</li></ul></div>
+          <div className="model-side-list"><h3>你只需要准备</h3><ul><li>一个模型服务商账号</li><li>一个访问密钥</li><li>一个可用的模型</li></ul></div>
           <details className="model-help"><summary>遇到问题？</summary><p>“保存并测试”会发起一次最小生成请求，验证服务地址、模型、权限和账户额度；请求可能产生极少量费用。通过后再回到内容工作区生成完整内容。</p></details>
         </aside>
       </div>

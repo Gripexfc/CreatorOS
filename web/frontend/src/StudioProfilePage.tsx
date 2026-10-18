@@ -154,7 +154,7 @@ export function StudioProfilePage({ navigate }: { navigate: (path: string) => vo
   };
   return <>
     <div className="studio-page-heading profile-heading">
-      <div><div className="page-kicker">PROFILE / 01</div><h1>我的写作偏好</h1><p>告诉知序你的经历、边界和表达习惯，后续生成可按这套偏好来写。</p></div>
+      <div><h1>个人画像</h1><p>告诉知序你的经历、边界和表达习惯，后续生成可按这套偏好来写。</p></div>
       <div className="profile-heading-actions"><button className="quiet-button" onClick={() => navigate('create')}><StudioIcon name="pen" size={16} />进入内容工作区</button></div>
     </div>
     {notice && <Message>{notice}</Message>}{error && <Message error>{error}</Message>}
@@ -166,7 +166,7 @@ export function StudioProfilePage({ navigate }: { navigate: (path: string) => vo
     <div className="profile-setup-flow" aria-label="写作偏好设置步骤"><span className="active"><b>1</b>共用规则</span><i>→</i><span><b>2</b>平台差异</span><i>→</i><span><b>3</b>保存并开始创作</span></div>
     <div className="profile-studio-layout">
       <section className="profile-studio-card">
-        <div className="profile-card-head"><div><span className="page-kicker">CURRENT PROFILE {version ? `· V${version}` : '· FIRST SETUP'}</span><h2>{snapshot.identity.display_name || '先从一套默认规则开始'}</h2></div><span className="profile-completion">{completion}% 完整</span></div>
+        <div className="profile-card-head"><div><span className="context-label">当前画像{version ? ` · 第 ${version} 版` : ' · 首次建立'}</span><h2>{snapshot.identity.display_name || '先从一套默认规则开始'}</h2></div><span className="profile-completion">{completion}% 完整</span></div>
         <section className="profile-form-section"><div className="profile-section-title"><div><h3>先让系统认识你</h3><p>这些信息帮助内容保持真实；没有的内容可以先留空。</p></div><span>基础信息</span></div>
           <div className="profile-form-grid"><SingleChoiceField id="profile-name" label="怎么称呼你" value={snapshot.identity.display_name} onChange={value => setIdentity('display_name', value)} placeholder="例如：陈默" choices={[]} /><SingleChoiceField id="profile-profession" label="你的身份" value={snapshot.identity.profession} onChange={value => setIdentity('profession', value)} placeholder="例如：产品运营、内容创作者" choices={suggestions.profession} /></div>
           <div className="profile-field"><label htmlFor="profile-bio">你想被怎样认识<small>写清楚经历、擅长的事和不写的范围</small></label><textarea id="profile-bio" rows={3} value={snapshot.identity.bio} onChange={event => setIdentity('bio', event.target.value)} placeholder="例如：我长期做内容产品，喜欢把复杂问题讲成可以执行的步骤。" /></div>
