@@ -331,7 +331,7 @@ export type TrendBoard = {
 };
 export type TrendsResponse = { trends: TrendBoard[]; refresh_after_seconds: number };
 export const getTrends = (sources: TrendSourceKey[], refresh = false, signal?: AbortSignal) =>
-  request<TrendsResponse>(`/api/v1/trends?platforms=${sources.join(',')}&limit=12&refresh=${refresh}`, { signal });
+  request<TrendsResponse>(`/api/v1/trends?platforms=${sources.join(',')}&limit=12&refresh=${refresh}`, { signal, timeoutMs: 30000 });
 export const createTaskFromHotspot = (id: string) => request<ContentTask>(`/api/v1/hotspots/${id}/task`, { method: "POST" });
 export const createHotspot = (payload: {
   title: string; canonical_url: string; source_name: string; source_kind: string; published_at?: string;
