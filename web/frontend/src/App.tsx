@@ -1,20 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { QuickCreatePage } from './QuickCreatePage';
-import { HotspotsPage } from './HotspotsPage';
-import { StudioLibraryPage } from './StudioLibraryPage';
-import { StudioProfilePage } from './StudioProfilePage';
-import { ContentWorkspace } from './Workspace';
-import { BreakdownPage } from './BreakdownPage';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ModelSettingsPage } from './ModelSettingsPage';
-import { AnalyticsPage } from './AnalyticsPage';
-import { PublishCenterPage } from './PublishCenter';
-import { DraftCenterPage } from './DraftCenter';
-import { OutputsPage } from './OutputsPage';
-import { ChatPage } from './ChatPage';
-import { SkillsPage } from './SkillsPage';
-import { OverviewPage, SettingsPage as AccountsPage } from './Pages';
 import { getStatus } from './api';
 import { StudioIcon } from './components/StudioIcon';
+
+const QuickCreatePage = lazy(() => import('./QuickCreatePage').then(module => ({ default: module.QuickCreatePage })));
+const HotspotsPage = lazy(() => import('./HotspotsPage').then(module => ({ default: module.HotspotsPage })));
+const StudioLibraryPage = lazy(() => import('./StudioLibraryPage').then(module => ({ default: module.StudioLibraryPage })));
+const StudioProfilePage = lazy(() => import('./StudioProfilePage').then(module => ({ default: module.StudioProfilePage })));
+const ContentWorkspace = lazy(() => import('./Workspace').then(module => ({ default: module.ContentWorkspace })));
+const BreakdownPage = lazy(() => import('./BreakdownPage').then(module => ({ default: module.BreakdownPage })));
+const AnalyticsPage = lazy(() => import('./AnalyticsPage').then(module => ({ default: module.AnalyticsPage })));
+const PublishCenterPage = lazy(() => import('./PublishCenter').then(module => ({ default: module.PublishCenterPage })));
+const DraftCenterPage = lazy(() => import('./DraftCenter').then(module => ({ default: module.DraftCenterPage })));
+const OutputsPage = lazy(() => import('./OutputsPage').then(module => ({ default: module.OutputsPage })));
+const ChatPage = lazy(() => import('./ChatPage').then(module => ({ default: module.ChatPage })));
+const SkillsPage = lazy(() => import('./SkillsPage').then(module => ({ default: module.SkillsPage })));
+const OverviewPage = lazy(() => import('./Pages').then(module => ({ default: module.OverviewPage })));
+const AccountsPage = lazy(() => import('./Pages').then(module => ({ default: module.SettingsPage })));
 
 const routes = [
   ['hotspots', '热点话题', 'compass', '从热点开始'],
@@ -125,7 +127,7 @@ function ThemeDropdown({ value, onChange }: { value: ThemeMode; onChange: (value
       aria-label="切换外观"
       aria-haspopup="listbox"
       aria-expanded={open}
-      aria-controls={menuId}
+      aria-controls={open ? menuId : undefined}
       aria-activedescendant={open ? `theme-option-${activeIndex}` : undefined}
       onClick={() => open ? setOpen(false) : openMenu()}
       onKeyDown={handleKeyDown}
@@ -226,8 +228,8 @@ export default function App() {
 
   return <div className="studio studio-refactor">
     <a className="studio-skip" href="#main">跳到内容</a>
-    <aside className="studio-sidebar">
-      <a className="studio-brand" href="#/hotspots" aria-label="知序内容工作台">
+    <aside className="studio-sidebar" aria-label="主导航">
+      <a className="studio-brand" href="#/hotspots" aria-label="知序 ZIXU STUDIO 内容工作台">
         <img className="studio-brand-mark" src="/brand/zixu-mark.svg?v=3" width="32" height="32" alt="" />
         <span className="studio-brand-copy"><strong>知序</strong><small>ZIXU STUDIO</small></span>
       </a>
@@ -235,32 +237,34 @@ export default function App() {
       <nav className="studio-nav studio-nav-primary" aria-label="工作台导航"><span className="studio-nav-heading">工作台</span>{renderNav(primaryKeys)}</nav>
       <nav className="studio-nav studio-nav-utility" aria-label="研究与设置导航"><span className="studio-nav-heading">研究与设置</span>{renderNav(utilityKeys)}</nav>
       <div className="studio-sidebar-bottom">
-        <div className="sidebar-workflow" aria-label="创作流程"><span>发现线索</span><StudioIcon name="arrow" size={12} /><span>形成作品</span></div>
+        <div className="sidebar-workflow" role="group" aria-label="创作流程"><span>发现线索</span><StudioIcon name="arrow" size={12} /><span>形成作品</span></div>
         <button className="studio-connection" onClick={() => check()} title="重新检查知序本地服务"><span className={online ? 'connection-dot online' : 'connection-dot'} />{online === null ? '正在连接知序本地服务' : online ? '知序本地服务已连接' : '重新连接知序本地服务'}</button>
       </div>
     </aside>
     <div className="studio-body">
       <header className="studio-topbar">
         <div className="studio-breadcrumb"><span>我的知序空间</span><StudioIcon name="chevron" size={13} /><strong>{current[1]}</strong></div>
-        <div className="studio-utilities"><form className="studio-search-shell" aria-label="搜索工作区" onSubmit={submitGlobalSearch}><StudioIcon name="search" size={15} /><input value={globalSearch} onChange={event => setGlobalSearch(event.target.value)} placeholder="搜索热点或来源，按回车" /></form><span className="studio-local"><i className={online ? 'online' : ''} />{online === null ? '正在连接知序本地服务' : online ? '知序本地服务已连接' : '知序本地服务未连接'}</span><div className="theme-control"><span>外观</span><ThemeDropdown value={theme} onChange={setTheme} /></div></div>
+        <div className="studio-utilities"><form className="studio-search-shell" aria-label="搜索工作区" onSubmit={submitGlobalSearch}><StudioIcon name="search" size={15} /><input aria-label="搜索热点或来源" value={globalSearch} onChange={event => setGlobalSearch(event.target.value)} placeholder="搜索热点或来源，按回车" /></form><span className="studio-local"><i className={online ? 'online' : ''} />{online === null ? '正在连接知序本地服务' : online ? '知序本地服务已连接' : '知序本地服务未连接'}</span><div className="theme-control"><span>外观</span><ThemeDropdown value={theme} onChange={setTheme} /></div></div>
       </header>
       <main id="main" tabIndex={-1} className="studio-main" key={route.view + route.id}>
         {online === false && <div className="message error" role="alert">知序本地服务暂时无法连接，内容保存和读取可能受影响。<button className="link" onClick={() => check()}>重新检查</button></div>}
-        {route.view === 'hotspots' && <HotspotsPage navigate={navigate} />}
-        {route.view === 'breakdown' && <BreakdownPage navigate={navigate} />}
-        {route.view === 'create' && <QuickCreatePage navigate={navigate} />}
-        {route.view === 'library' && <StudioLibraryPage navigate={navigate} />}
-        {route.view === 'profile' && <StudioProfilePage navigate={navigate} />}
-        {route.view === 'analytics' && <div className="analytics-page"><AnalyticsPage /></div>}
-        {route.view === 'settings' && <ModelSettingsPage />}
-        {route.view === 'accounts' && <AccountsPage />}
-        {route.view === 'overview' && <OverviewPage navigate={navigate} />}
-        {route.view === 'publish' && <PublishCenterPage initialTaskId={route.id || undefined} navigate={navigate} />}
-        {route.view === 'drafts' && <DraftCenterPage initialDraftId={route.id || undefined} onDirty={() => {}} />}
-        {route.view === 'outputs' && <OutputsPage />}
-        {route.view === 'chat' && <ChatPage navigate={navigate} />}
-        {route.view === 'skills' && <SkillsPage />}
-        {route.view === 'workspace' && <ContentWorkspace taskId={route.id} navigate={navigate} onDirty={() => {}} />}
+        <Suspense fallback={<div className="studio-empty" role="status">正在加载页面…</div>}>
+          {route.view === 'hotspots' && <HotspotsPage navigate={navigate} />}
+          {route.view === 'breakdown' && <BreakdownPage navigate={navigate} />}
+          {route.view === 'create' && <QuickCreatePage navigate={navigate} />}
+          {route.view === 'library' && <StudioLibraryPage navigate={navigate} />}
+          {route.view === 'profile' && <StudioProfilePage navigate={navigate} />}
+          {route.view === 'analytics' && <div className="analytics-page"><AnalyticsPage /></div>}
+          {route.view === 'settings' && <ModelSettingsPage />}
+          {route.view === 'accounts' && <AccountsPage />}
+          {route.view === 'overview' && <OverviewPage navigate={navigate} />}
+          {route.view === 'publish' && <PublishCenterPage initialTaskId={route.id || undefined} navigate={navigate} />}
+          {route.view === 'drafts' && <DraftCenterPage initialDraftId={route.id || undefined} onDirty={() => {}} />}
+          {route.view === 'outputs' && <OutputsPage />}
+          {route.view === 'chat' && <ChatPage navigate={navigate} />}
+          {route.view === 'skills' && <SkillsPage />}
+          {route.view === 'workspace' && <ContentWorkspace taskId={route.id} navigate={navigate} onDirty={() => {}} />}
+        </Suspense>
       </main>
     </div>
   </div>;

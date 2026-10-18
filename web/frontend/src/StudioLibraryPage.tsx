@@ -65,6 +65,26 @@ const fromServer = (row: QuickDraft): Draft => ({
   persistenceState: 'saved_input',
 });
 
+const fromWorkflow = (job: WorkflowJob): Draft => {
+  const xhs = job.platform_outputs?.xiaohongshu;
+  return {
+    id: `workflow:${job.id}`,
+    topic: job.topic || '未命名工作流',
+    title: job.topic || '未命名工作流',
+    context: job.context || '',
+    source: job.source || '',
+    sourceUrl: job.source_url || '',
+    platform: 'xiaohongshu',
+    mode: '文章',
+    skill: 'xhs-note-creator',
+    output: xhs?.copy_text || `工作流已生成本地草稿：${job.topic || '未命名工作流'}`,
+    createdAt: (job.updated || job.created || Date.now() / 1000) * 1000,
+    workflowId: job.id,
+    workflowArtifact: xhs?.primary_text || null,
+    persistenceState: 'saved_input',
+  };
+};
+
 const libraryErrorText = (error: unknown) => {
   if (error instanceof ApiError && error.status === 404) {
     return '内容服务没有提供内容库接口。通常是后端进程还没重启，或当前页面没有连到 8000 端口；请重启知序后端后刷新。';
@@ -86,9 +106,15 @@ export function StudioLibraryPage({ navigate }: { navigate: (path: string) => vo
     let mounted = true;
     const localRows = readLocalDrafts();
     setDrafts(localRows);
-    void listQuickDrafts().then(serverRows => {
+    void Promise.allSettled([listQuickDrafts(), listWorkflows()]).then(([draftResult, workflowResult]) => {
       if (!mounted) return;
+      if (draftResult.status === 'rejected') throw draftResult.reason;
+      const serverRows = draftResult.value;
+      const workflowRows = workflowResult.status === 'fulfilled' ? workflowResult.value : [];
       const merged = new Map<string, Draft>(serverRows.map(row => [row.quick_draft_id, fromServer(row)]));
+      workflowRows.forEach(job => {
+        if (!Array.from(merged.values()).some(row => row.workflowId === job.id)) merged.set(`workflow:${job.id}`, fromWorkflow(job));
+      });
       localRows.forEach(row => {
         const local = { ...row, persistenceState: row.persistenceState || 'local_only' } as Draft;
         const server = merged.get(row.id);
@@ -100,11 +126,9 @@ export function StudioLibraryPage({ navigate }: { navigate: (path: string) => vo
       setDrafts(next);
       setSelected(current => current ? next.find(row => row.id === current.id) || current : null);
       setLoadError('');
+      setWorkflows(workflowRows);
     }).catch(error => { if (mounted) setLoadError(libraryErrorText(error)); });
     return () => { mounted = false; };
-  }, [reloadToken]);
-  useEffect(() => {
-    void listWorkflows().then(setWorkflows).catch(() => setWorkflows([]));
   }, [reloadToken]);
 
   const removeLocalCopy = (id: string) => {
@@ -142,11 +166,11 @@ export function StudioLibraryPage({ navigate }: { navigate: (path: string) => vo
     navigate('create');
   };
   const selectedWorkflow = selected?.workflowId ? workflows.find(item => item.id === selected.workflowId) : undefined;
-  const workflowStatus = (status: WorkflowJob['status']) => ({ queued: '排队中', running: '生成中', completed: '已完成', blocked: '待补齐', failed: '失败', interrupted: '已停止' }[status]);
+  const workflowStatus = (status: WorkflowJob['status'], executionMode?: string) => executionMode?.startsWith('compact') && status === 'completed' ? '已生成 · 待人工复核' : ({ queued: '排队中', running: '生成中', completed: '已完成', blocked: '待补齐', failed: '失败', interrupted: '已停止' }[status]);
 
   return <>
     <div className="studio-page-heading library-heading"><div><h1>我的内容</h1><p>服务端保存的内容会在刷新后继续出现；尚未同步的草稿仍保留在本机。</p></div><button className="primary" onClick={startNew}><StudioIcon name="plus" size={16} />开始新创作</button></div>
     {loadError && <Message error><span>{loadError}</span><button className="link" onClick={() => setReloadToken(value => value + 1)}>重试</button></Message>}
-    {drafts.length ? <div className="library-studio-layout"><section className="library-draft-list"><div className="library-list-meta"><span>{drafts.length} 个快速草稿</span><span>服务端内容 + 本机恢复</span></div>{drafts.map(item => <button key={item.id} className={`library-draft-row ${selected?.id === item.id ? 'selected' : ''}`} onClick={() => setSelected(item)}><span className="library-draft-icon"><StudioIcon name={item.mode === '配图' ? 'image' : 'file'} size={18} /></span><span><strong>{item.topic}</strong><small>{platformLabels[item.platform] || item.platform} · {modeLabel(item.platform, item.mode)} · {item.persistenceState === 'saved_input' ? `内容库第 ${item.inputVersion || 1} 版` : '仅保存在本机'}</small></span><StudioIcon name="chevron" size={15} /></button>)}</section><section className="library-draft-detail">{selected ? <><div className="detail-top"><div><span className="detail-tag">{platformLabels[selected.platform] || selected.platform} · {modeLabel(selected.platform, selected.mode)}</span><h2>{selected.topic}</h2><p>使用能力：{selected.skill} · {new Date(selected.createdAt).toLocaleString('zh-CN')}</p></div>{selected.persistenceState === 'local_only' && <button className="quiet-button" onClick={() => removeLocalCopy(selected.id)}>移除本机副本</button>}</div>{selectedWorkflow && <div className="hint">工作流：{workflowStatus(selectedWorkflow.status)} · 已生成 {Object.keys(selectedWorkflow.platform_outputs || {}).length}/{selectedWorkflow.platforms?.length || 1} 个已请求平台版本 <button className="link" onClick={() => navigate(`publish/${selectedWorkflow.id}`)}>打开发布前检查</button></div>}{selected.persistenceState === 'saved_input' && <p className="hint">已保存为内容库输入，第 {selected.inputVersion || 1} 版；它仍是可编辑草稿，尚未提交平台。</p>}<pre>{selected.output}</pre><div className="detail-actions"><button className="primary" onClick={() => continueEditing(selected)}>继续编辑</button><button className="secondary" onClick={() => { const blob = new Blob([selected.output], { type: 'text/markdown;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${selected.topic.slice(0, 24) || 'creatoros-草稿'}.md`; link.click(); URL.revokeObjectURL(link.href); }}><StudioIcon name="download" size={15} />下载 Markdown</button></div></> : <div className="library-detail-empty"><StudioIcon name="file" size={28} /><h2>选择一篇内容</h2><p>查看草稿全文，继续修改或下载。</p></div>}</section></div> : <div className="studio-empty"><span className="empty-mark"><StudioIcon name="pen" size={24} /></span><h2>还没有保存的内容</h2><p>从热点开始，生成你的第一篇文章或一组配图方案。</p><button className="primary" onClick={() => navigate('hotspots')}>去看热点<StudioIcon name="arrow" size={16} /></button></div>}
+    {drafts.length ? <div className="library-studio-layout"><section className="library-draft-list"><div className="library-list-meta"><span>{drafts.length} 个内容草稿</span><span>工作流、服务端内容 + 本机恢复</span></div>{drafts.map(item => <button key={item.id} className={`library-draft-row ${selected?.id === item.id ? 'selected' : ''}`} onClick={() => setSelected(item)}><span className="library-draft-icon"><StudioIcon name={item.mode === '配图' ? 'image' : 'file'} size={18} /></span><span><strong>{item.topic}</strong><small>{platformLabels[item.platform] || item.platform} · {modeLabel(item.platform, item.mode)} · {item.persistenceState === 'saved_input' ? `内容库第 ${item.inputVersion || 1} 版` : '仅保存在本机'}</small></span><StudioIcon name="chevron" size={15} /></button>)}</section><section className="library-draft-detail">{selected ? <><div className="detail-top"><div><span className="detail-tag">{platformLabels[selected.platform] || selected.platform} · {modeLabel(selected.platform, selected.mode)}</span><h2>{selected.topic}</h2><p>使用能力：{selected.skill} · {new Date(selected.createdAt).toLocaleString('zh-CN')}</p></div>{selected.persistenceState === 'local_only' && <button className="quiet-button" onClick={() => removeLocalCopy(selected.id)}>移除本机副本</button>}</div>{selectedWorkflow && <div className="hint">工作流：{workflowStatus(selectedWorkflow.status, selectedWorkflow.execution_mode)} · 已生成 {Object.keys(selectedWorkflow.platform_outputs || {}).length}/{selectedWorkflow.platforms?.length || 1} 个已请求平台版本 <button className="link" onClick={() => navigate(`publish/${selectedWorkflow.id}`)}>打开发布前检查</button></div>}{selected.persistenceState === 'saved_input' && <p className="hint">已保存为内容库输入，第 {selected.inputVersion || 1} 版；它仍是可编辑草稿，尚未提交平台。</p>}<pre>{selected.output}</pre><div className="detail-actions"><button className="primary" onClick={() => continueEditing(selected)}>继续编辑</button><button className="secondary" onClick={() => { const blob = new Blob([selected.output], { type: 'text/markdown;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${selected.topic.slice(0, 24) || 'creatoros-草稿'}.md`; link.click(); URL.revokeObjectURL(link.href); }}><StudioIcon name="download" size={15} />下载 Markdown</button></div></> : <div className="library-detail-empty"><StudioIcon name="file" size={28} /><h2>选择一篇内容</h2><p>查看草稿全文，继续修改或下载。</p></div>}</section></div> : <div className="studio-empty"><span className="empty-mark"><StudioIcon name="pen" size={24} /></span><h2>还没有保存的内容</h2><p>从热点开始，生成你的第一篇文章或一组配图方案。</p><button className="primary" onClick={() => navigate('hotspots')}>去看热点<StudioIcon name="arrow" size={16} /></button></div>}
   </>;
 }

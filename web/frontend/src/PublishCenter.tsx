@@ -11,8 +11,13 @@ const artifactTitle = (artifact: Artifact) => {
   return String(content.title ?? candidates[0] ?? '未命名版本');
 };
 const workflowTitle = (job: WorkflowJob) => String(job.topic || '').split('\n')[0].trim() || `工作流 ${job.id.slice(0, 8)}`;
-const workflowStatus = (status: WorkflowJob['status']) => ({ queued: '排队中', running: '生成中', completed: '已完成', blocked: '待补齐', failed: '失败', interrupted: '已停止' }[status]);
+const workflowStatus = (status: WorkflowJob['status'], executionMode?: string) => executionMode?.startsWith('compact') && status === 'completed' ? '已生成 · 待人工复核' : ({ queued: '排队中', running: '生成中', completed: '已完成', blocked: '待补齐', failed: '失败', interrupted: '已停止' }[status]);
 const platformKey = (platform: 'wechat' | 'xiaohongshu' | 'douyin') => platform === 'wechat' ? 'wechat-oa' : platform;
+const connectorPublishLabel = (connector?: ConnectorState) => {
+  if (!connector) return '真实账号未读取';
+  if (connector.adapter_kind === 'mock') return '模拟连接；真实账号未读取';
+  return connectorStateName(connector.state, connector.adapter_kind);
+};
 const outputStatus = (status?: string) => ({ completed: '已生成', ready: '已生成', draft: '草稿', blocked: '待补齐', failed: '失败', pending: '待生成' }[status || ''] || status || '待生成');
 const checkSummary = (value: unknown) => {
   if (typeof value === 'string') return value;
@@ -28,7 +33,7 @@ const workflowReason = (job: WorkflowJob, output?: WorkflowPlatformOutput) => {
   const missing = output?.missing?.filter(Boolean) || [];
   if (missing.length) return missing.join('；');
   if (job.stages.adaptation?.reason) return job.stages.adaptation.reason;
-  if (job.status !== 'completed') return job.stages[job.current || 'discovery']?.reason || `工作流${workflowStatus(job.status)}，可从未完成阶段重试`;
+  if (job.status !== 'completed') return job.stages[job.current || 'discovery']?.reason || `工作流${workflowStatus(job.status, job.execution_mode)}，可从未完成阶段重试`;
   return '平台版本尚未生成。';
 };
 
@@ -40,13 +45,14 @@ function WorkflowPublishDetail({ job, connectors, navigate }: { job: WorkflowJob
   const requestedKeys: Set<string> = new Set(platforms.map(platform => platform === 'wechat' ? 'wechat-oa' : platform));
   const generatedCount = Object.keys(outputs).filter(key => requestedKeys.has(key)).length;
   const blockedOutputs = Object.values(outputs).filter(output => output.status === 'blocked' || output.missing?.length).length;
-  const statusText = job.status === 'completed' && blockedOutputs ? '已完成 · 有待补齐' : workflowStatus(job.status);
+  const statusText = job.status === 'completed' && blockedOutputs ? '已生成 · 有待补齐' : workflowStatus(job.status, job.execution_mode);
   return <>
     <div className="panel-title"><div><span className="kicker">发布前检查 · 真实工作流</span><h2>{workflowTitle(job)}</h2></div><div className="detail-actions"><span className="status-pill">{statusText}</span><button className="secondary" onClick={() => {
       const platform = platforms[0] || 'xiaohongshu';
       const defaults = platform === 'douyin' ? 'video-script' : platform === 'wechat' ? 'social-content' : 'xhs-note-creator';
-      const outputKind = (job as WorkflowJob & { output_kind?: 'standard' | 'video' }).output_kind === 'video' ? 'video' : 'standard';
-      try { window.localStorage.setItem('creatoros:compose-form', JSON.stringify({ topic: workflowTitle(job), context: job.context || '', source: job.source || '', sourceUrl: job.source_url || '', platform, mode: '文章', outputKind, skill: (job as WorkflowJob & { skill?: string }).skill || defaults, workflowId: job.id, workflowArtifact: null })); } catch { /* Editor can still open with the current form. */ }
+      const outputKind = job.output_kind === 'video' ? 'video' : job.output_kind === 'text' ? 'text' : job.output_kind === 'image' ? 'standard' : 'standard';
+      const mode = platform === 'xiaohongshu' ? (job.output_kind === 'image' ? '内容+配图' : '文章') : '文章';
+      try { window.localStorage.setItem('creatoros:compose-form', JSON.stringify({ topic: workflowTitle(job), context: job.context || '', source: job.source || '', sourceUrl: job.source_url || '', platform, mode, outputKind, skill: (job as WorkflowJob & { skill?: string }).skill || defaults, workflowId: job.id, workflowArtifact: null })); } catch { /* Editor can still open with the current form. */ }
       navigate('create');
     }}>回到创作页{job.status === 'completed' ? '查看' : '重试'}</button></div></div>
     <div className="publish-checks"><span className={`check ${job.status === 'completed' && !blockedOutputs ? 'ok' : ''}`}>工作流 {statusText}</span><span className={`check ${generatedCount === requestedCount ? 'ok' : ''}`}>平台版本 {generatedCount}/{requestedCount}</span><span className="check">发布：手动确认，未调用平台发布接口</span></div>
@@ -57,13 +63,14 @@ function WorkflowPublishDetail({ job, connectors, navigate }: { job: WorkflowJob
       const artifacts = output?.artifacts || [];
       return <article className={`publish-platform-card ${platformClass(platform)}`} key={platform}>
         <div className="publish-platform-head"><div><span className="kicker">{platformName(platform)}</span><h3>{output ? outputStatus(output.status) : '尚未生成'}</h3></div><span className="status-pill">{output ? outputStatus(output.status) : '待生成'}</span></div>
-        <p>{output?.media_kind === 'script' ? '脚本，不含视频文件' : output?.media_kind === 'video' ? '视频文件' : output?.media_kind === 'image' ? '图文卡片' : output ? '平台内容包' : workflowReason(job, output)}</p>
+        <p>{output?.media_kind === 'copy' ? '仅文案，不含图片' : output?.media_kind === 'script' ? '脚本，不含视频文件' : output?.media_kind === 'video' ? '视频文件' : output?.media_kind === 'image' ? '图文卡片' : output ? '平台内容包' : workflowReason(job, output)}</p>
+        {platform === 'xiaohongshu' && output?.title_candidates?.length ? <p><strong>合规标题：</strong>{output.title_candidates.join(' / ')}</p> : null}
         {output?.primary_text && <p><strong>主稿：</strong>{output.primary_text.split('/').pop()}</p>}
         {output?.copy_text && <details><summary>查看草稿文案（发布前需适配）</summary><pre>{output.copy_text}</pre></details>}
         {output?.missing?.length ? <ul>{output.missing.map((item, index) => <li key={`${item}-${index}`}>待补齐：{item}</li>)}</ul> : !output && <p className="muted">待补齐：{workflowReason(job, output)}</p>}
         {artifacts.length ? <ul>{artifacts.map(path => <li key={path}><a href={workflowMediaUrl(path)} target="_blank" rel="noopener noreferrer">{path.split('/').pop()}</a>{' '}<a href={workflowMediaUrl(path)} download>下载</a></li>)}</ul> : <p className="muted">暂无可下载文件</p>}
         {output?.checks?.length ? <details><summary>查看产物检查（{output.checks.length}）</summary><ul>{output.checks.map((check, index) => <li key={index}>{checkSummary(check)}</li>)}</ul></details> : null}
-        <div className="publish-platform-foot"><small>账号：{connector ? connectorStateName(connector.state) : '未读取'}</small><small>交付：下载后手动发布</small></div>
+        <div className="publish-platform-foot"><small>账号：{connectorPublishLabel(connector)}</small><small>交付：下载后手动发布</small></div>
       </article>;
     })}</div>
   </>;
@@ -142,7 +149,7 @@ export function PublishCenterPage({ initialTaskId, navigate }: { initialTaskId?:
       <section className="panel publish-projects">
         <div className="section-title"><div><span className="kicker">内容项目</span><h2>{visibleTasks.length + visibleWorkflows.length ? `${visibleTasks.length + visibleWorkflows.length} 个项目` : '还没有项目'}</h2></div><button className="primary" onClick={() => navigate('workspace')}>新建内容</button></div>
         {visibleTasks.length ? <><span className="kicker">内容库任务</span>{visibleTasks.map(task => <button className={`task-line ${detail?.task.id === task.id && !workflowDetail ? 'selected' : ''}`} key={task.id} onClick={() => void getContentTask(task.id).then(next => { setDetail(next); setWorkflowDetail(null); }).catch(e => setError(errorText(e)))}><span><strong>{task.title}</strong><small>{stateName(task.status)} · {dateLabel(task.updated_at)}</small></span><b>→</b></button>)}</> : null}
-        {visibleWorkflows.length ? <><span className="kicker publish-project-group">Easel 工作流</span>{visibleWorkflows.map(job => { const requested = Math.max(1, job.platforms?.length || 1); const blocked = Object.values(job.platform_outputs || {}).some(output => output.status === 'blocked' || output.missing?.length); return <button className={`task-line ${workflowDetail?.id === job.id ? 'selected' : ''}`} key={job.id} onClick={() => { setWorkflowDetail(job); setDetail(null); }}><span><strong>{workflowTitle(job)}</strong><small>{job.status === 'completed' && blocked ? '已完成 · 有待补齐' : workflowStatus(job.status)} · {Object.keys(job.platform_outputs || {}).length}/{requested} 平台版本</small></span><b>→</b></button>; })}</> : null}
+        {visibleWorkflows.length ? <><span className="kicker publish-project-group">Easel 工作流</span>{visibleWorkflows.map(job => { const requested = Math.max(1, job.platforms?.length || 1); const blocked = Object.values(job.platform_outputs || {}).some(output => output.status === 'blocked' || output.missing?.length); return <button className={`task-line ${workflowDetail?.id === job.id ? 'selected' : ''}`} key={job.id} onClick={() => { setWorkflowDetail(job); setDetail(null); }}><span><strong>{workflowTitle(job)}</strong><small>{job.status === 'completed' && blocked ? '已生成 · 有待补齐' : workflowStatus(job.status, job.execution_mode)} · {Object.keys(job.platform_outputs || {}).length}/{requested} 平台版本</small></span><b>→</b></button>; })}</> : null}
         {!visibleTasks.length && !visibleWorkflows.length && <Empty title="还没有可发布内容">先从一键工作流生成主题，完成后平台版本会出现在这里。</Empty>}
       </section>
       <section className="panel publish-detail">
@@ -155,7 +162,7 @@ export function PublishCenterPage({ initialTaskId, navigate }: { initialTaskId?:
             return <article className={`publish-platform-card ${platformClass(platform)}`} key={platform}>
               <div className="publish-platform-head"><div><span className="kicker">{platformName(platform)}</span><h3>{artifact ? artifactTitle(artifact) : '尚未生成'}</h3></div><span className="status-pill">{artifact ? stateName(artifact.status) : '待生成'}</span></div>
               <p>{artifact ? `版本 ${artifact.current_revision?.revision_no ?? 0} · ${artifact.current_revision?.generation_kind === 'user_edit' ? '已编辑' : '本地模板'}` : '完成写作计划后生成'}</p>
-              <div className="publish-platform-foot"><small>{connector ? `账号：${connectorStateName(connector.state)}` : '账号：未读取'}</small>{artifact && <button className="secondary" disabled={busy || !artifact.current_revision_id} onClick={() => void action(artifact)}>{platform === 'wechat' ? '转为公众号草稿' : '检查发布条件'}</button>}</div>
+              <div className="publish-platform-foot"><small>账号：{connectorPublishLabel(connector)}</small>{artifact && <button className="secondary" disabled={busy || !artifact.current_revision_id} onClick={() => void action(artifact)}>{platform === 'wechat' ? '转为公众号草稿' : '检查发布条件'}</button>}</div>
             </article>;
           })}</div>}
         </> : <Empty title="选择一个内容项目">查看平台独立版本、真实产物、检查结果和缺失原因。</Empty>}

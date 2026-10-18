@@ -390,9 +390,9 @@ export type WorkflowStreamingOutput = string | {
   updated_at?: number;
   chars?: number;
 };
-export type WorkflowPlatformOutput = { status: string; directory: string; skill: string; media_kind: string; artifacts: string[]; checks: unknown[]; primary_text?: string; copy_text?: string; missing?: string[]; manual_publish?: boolean };
+export type WorkflowPlatformOutput = { status: string; directory: string; skill: string; media_kind: string; artifacts: string[]; checks: unknown[]; primary_text?: string; copy_text?: string; title?: string; title_candidates?: string[]; missing?: string[]; media_status?: 'ready' | 'pending' | string; manual_publish?: boolean };
 export type WorkflowLiveStream = WorkflowStreamingOutput & { stage?: string; platform?: string; status?: string; error?: string; chars?: number; started_at?: number; finished_at?: number };
-export type WorkflowJob = { id: string; topic: string; context?: string; input_type?: 'theme' | 'url' | 'notes' | 'hotspot' | string; source?: string; source_url?: string; platforms: string[]; profile: string; status: 'queued' | 'running' | 'completed' | 'blocked' | 'failed' | 'interrupted'; current: string | null; current_task?: string; created: number; attempt_started?: number; attempt?: number; updated?: number; started_at?: number; finished_at?: number; duration_seconds?: number; budget_seconds?: number; execution_mode?: 'compact' | 'legacy' | string; debug_mode?: boolean; debug_events?: WorkflowDebugEvent[]; debug_log?: WorkflowDebugEvent[]; started?: number; finished?: number; duration_ms?: number; stages: Record<string, WorkflowStage>; streaming_outputs?: Record<string, WorkflowStreamingOutput>; live_stream?: WorkflowLiveStream; content_status?: string; published?: boolean; platform_outputs?: Record<string, WorkflowPlatformOutput>; execution_receipts?: unknown[] };
+export type WorkflowJob = { id: string; topic: string; context?: string; input_type?: 'theme' | 'url' | 'notes' | 'hotspot' | string; source?: string; source_url?: string; platforms: string[]; profile: string; output_kind?: 'standard' | 'video' | 'image' | 'text'; status: 'queued' | 'running' | 'completed' | 'blocked' | 'failed' | 'interrupted'; current: string | null; current_task?: string; created: number; attempt_started?: number; attempt?: number; updated?: number; started_at?: number; finished_at?: number; duration_seconds?: number; budget_seconds?: number; execution_mode?: 'compact' | 'legacy' | string; debug_mode?: boolean; debug_events?: WorkflowDebugEvent[]; debug_log?: WorkflowDebugEvent[]; started?: number; finished?: number; duration_ms?: number; stages: Record<string, WorkflowStage>; streaming_outputs?: Record<string, WorkflowStreamingOutput>; live_stream?: WorkflowLiveStream; content_status?: string; published?: boolean; platform_outputs?: Record<string, WorkflowPlatformOutput>; execution_receipts?: unknown[] };
 export const startWorkflow = (payload: {
   topic: string;
   /** Original material is sent separately from the topic so the backend can
@@ -404,7 +404,7 @@ export const startWorkflow = (payload: {
   platforms?: string[];
   profile?: string;
   skill?: string;
-  output_kind?: 'standard' | 'video';
+  output_kind?: 'standard' | 'video' | 'image' | 'text';
   debug_mode?: boolean;
   revision?: { draft: string; instruction: string };
 }) => request<WorkflowJob>('/api/workflow/run', { method: 'POST', body: JSON.stringify({ platforms: ['xiaohongshu', 'douyin', 'wechat-oa'], ...payload }) });
@@ -444,7 +444,17 @@ export type ModelRow = {
 };
 export type ModelChannel = { rows: ModelRow[] };
 export type ModelChannelsResponse = { channels: { chat: ModelChannel; transcribe?: ModelChannel; image?: ModelChannel; video?: ModelChannel; music?: ModelChannel; speech?: ModelChannel }; primary: string };
-export type ModelSaveRow = { slot: string; name?: string; model: string; baseUrl: string; key: string; key2?: string; primary?: boolean };
+export type ModelSaveRow = {
+  slot: string;
+  name?: string;
+  model: string;
+  baseUrl: string;
+  key: string;
+  key2?: string;
+  primary?: boolean;
+  clearKey?: boolean;
+  clearKey2?: boolean;
+};
 export type ModelSelftestResult = { baseUrl: string; ok: boolean; ms: number; detail?: string };
 export type ModelDiscoveryRequest = { slot: string; name?: string; model?: string; baseUrl?: string; key?: string };
 export type ModelDiscoveryResponse = { models: string[]; available: boolean; source: 'remote' | 'configured' | 'unavailable' | 'none'; detail?: string };
@@ -465,6 +475,8 @@ export const getModelGatewayStatus = () => retryTransient(() => request<ModelGat
 export type OfficialOutputNode = { name: string; type: 'dir' | 'file'; path: string; kind?: string; size?: number; mtime?: number; children?: OfficialOutputNode[]; fileCount?: number; meta?: Record<string, unknown> };
 export const listOfficialOutputs = () => request<OfficialOutputNode[]>('/api/outputs');
 export const officialOutputUrl = (path: string) => `/api/output/${path.split('/').map(encodeURIComponent).join('/')}`;
+/** 原样提供产物文件，供二进制文件下载或媒体预览使用。 */
+export const officialOutputMediaUrl = (path: string) => apiUrl(`/api/media/${path.split('/').map(encodeURIComponent).join('/')}`);
 
 export type OfficialAccount = { platform: string; name: string; backend: string; supported: boolean; loggedIn: boolean; note: string };
 export const listOfficialAccounts = () => request<OfficialAccount[]>('/api/accounts');

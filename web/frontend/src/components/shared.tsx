@@ -13,7 +13,13 @@ const connectorStatusNames: Record<string, string> = {
   connected: '已登录，等待读取账号', read_succeeded: '账号数据已读取', submit_succeeded: '本地演示已提交',
   publish_succeeded: '已发布（等待真实回执）', failed: '处理失败', unsupported: '暂不支持', expired: '登录已过期',
 };
-export const connectorStateName = (value: string) => connectorStatusNames[value] ?? stateName(value);
+const mockConnectorStatusNames: Record<string, string> = {
+  not_configured: '还没配置', configured: '本地演示待连接', connecting: '正在连接本地演示',
+  connected: '本地演示已连接', read_succeeded: '本地演示账号已读取', submit_succeeded: '本地演示已提交',
+  publish_succeeded: '本地演示已提交（无真实回执）', failed: '本地演示失败', unsupported: '本地演示不可用', expired: '本地演示已重置',
+};
+export const connectorStateName = (value: string, adapterKind?: string) =>
+  (adapterKind === 'mock' ? mockConnectorStatusNames[value] : connectorStatusNames[value]) ?? stateName(value);
 // API timestamps normally carry an explicit UTC offset. When a manually
 // imported observation has no offset, keep it as local wall-clock time instead
 // of silently shifting it by the machine timezone.

@@ -7,10 +7,10 @@ import { profilePrompt } from './lib/profile';
 type Platform = 'wechat' | 'xiaohongshu' | 'douyin';
 type Mode = '文章' | '配图' | '内容+配图';
 type ModeOption = '文章' | '配图';
-type OutputKind = 'standard' | 'video';
+type OutputKind = 'standard' | 'video' | 'text';
 type Draft = { id: string; topic: string; title?: string; context?: string; source?: string; sourceUrl?: string; platform: Platform; mode: Mode; skill: string; output: string; createdAt: number; workflowId?: string | null; workflowArtifact?: string | null; taskId?: string | null; inputVersion?: number; persistenceState?: 'saved_input' | 'local_only' };
 type OutputMetadata = { platform: Platform; mode: Mode; skill: string; workflowId: string | null; workflowArtifact: string | null; source: string; sourceUrl: string };
-type ComposeFormSnapshot = { outputKind?: OutputKind; topic?: string; context?: string; source?: string; sourceUrl?: string; platform?: Platform; mode?: Mode; skill?: string; workflowId?: string | null; workflowArtifact?: string | null; feedback?: 'keep' | 'adjust'; feedbackNote?: string };
+type ComposeFormSnapshot = { outputKind?: OutputKind; topic?: string; context?: string; source?: string; sourceUrl?: string; platform?: Platform; mode?: Mode; skill?: string; workflowId?: string | null; workflowArtifact?: string | null; generatedPlatform?: Platform | null; generatedMode?: Mode | null; generatedSkill?: string | null; feedback?: 'keep' | 'adjust'; feedbackNote?: string };
 type LearningFeedback = { reaction: 'keep' | 'adjust'; note: string; platform: Platform; mode: Mode; createdAt: number };
 const platforms: Record<Platform, { label: string; short: string; detail: string }> = {
   wechat: { label: '公众号', short: '图文文章', detail: '完整文章 · 配图 · 可复制的公众号排版' },
@@ -39,7 +39,7 @@ const stageLabels: Record<string, string> = { intake: '整理需求', research: 
 const platformFinalFiles: Record<Platform, string> = { wechat: '08-gzh-final.md', xiaohongshu: '09-xhs-final.md', douyin: '10-douyin-final.md' };
 const platformOutputLabels: Record<Platform, Record<Mode, string>> = {
   wechat: { 文章: '图文文章', 配图: '配图', '内容+配图': '图文文章' },
-  xiaohongshu: { 文章: '整套笔记', 配图: '卡片', '内容+配图': '整套笔记' },
+  xiaohongshu: { 文章: '仅文案', 配图: '卡片', '内容+配图': '完整图文' },
   douyin: { 文章: '脚本', 配图: '封面与配图', '内容+配图': '脚本与配图' },
 };
 const workflowStages = ['discovery', 'topic', 'master', 'adaptation', 'quality', 'archive'] as const;
@@ -110,7 +110,7 @@ const timestampMs = (value?: number | null) => {
   if (!value || !Number.isFinite(value)) return 0;
   return value > 100000000000 ? value : value * 1000;
 };
-const workflowStatus = (status: WorkflowJob['status']) => ({ queued: '排队中', running: '正在处理', completed: '已完成', blocked: '暂时无法继续', failed: '处理失败', interrupted: '已停止' }[status]);
+const workflowStatus = (status: WorkflowJob['status'], executionMode?: string) => executionMode?.startsWith('compact') && status === 'completed' ? '已生成 · 待人工复核' : ({ queued: '排队中', running: '正在处理', completed: '已完成', blocked: '暂时无法继续', failed: '处理失败', interrupted: '已停止' }[status]);
 const workflowErrorText = (error: unknown) => {
   const message = errorText(error);
   if (/402|余额不足|额度|欠费|arrearage|overdue|账户状态|billing|insufficient balance|insufficient credit|temporarily disabled/i.test(message)) return '模型账户欠费或状态异常。请到服务商控制台处理欠费并开启额度，或到“模型设置”更换可用 API Key；当前主题和素材已保留。';
@@ -194,7 +194,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
       // Keep the original form for legacy recovery before the persistence
       // effect writes this mount's initial empty state.
       pendingWorkflow.current = savedForm;
-      setOutputKind(savedForm.outputKind === 'video' ? 'video' : 'standard'); setTopic(savedForm.topic || ''); setContext(savedForm.context || ''); setSource(savedForm.source || ''); setSourceUrl(savedForm.sourceUrl || ''); if (savedForm.platform) setPlatform(savedForm.platform); if (savedForm.mode) setMode(savedForm.mode); if (savedForm.skill) setSkill(savedForm.skill); if (savedForm.feedback) { setFeedback(savedForm.feedback); setFeedbackNote(savedForm.feedbackNote || ''); } if (savedForm.workflowId) { setWorkflowId(savedForm.workflowId); setWorkflowArtifact(savedForm.workflowArtifact || null); }
+      setOutputKind(savedForm.outputKind === 'video' || savedForm.outputKind === 'text' ? savedForm.outputKind : 'standard'); setTopic(savedForm.topic || ''); setContext(savedForm.context || ''); setSource(savedForm.source || ''); setSourceUrl(savedForm.sourceUrl || ''); if (savedForm.platform) setPlatform(savedForm.platform); if (savedForm.mode) setMode(savedForm.mode); if (savedForm.skill) setSkill(savedForm.skill); if (savedForm.feedback) { setFeedback(savedForm.feedback); setFeedbackNote(savedForm.feedbackNote || ''); } if (savedForm.workflowId) { setWorkflowId(savedForm.workflowId); setWorkflowArtifact(savedForm.workflowArtifact || null); }
     }
     if (hotspotNotice) setNotice(hotspotNotice);
     setFormReady(true);
@@ -213,7 +213,34 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
   }, [busy]);
   useEffect(() => { void getProfile().then(result => { setProfile(result.current_version.snapshot); setProfileVersion(result.current_version.version_no); }).catch(() => setProfile(null)); void listMemories().then(items => setMemories(items.filter(item => item.confirmation_status === 'confirmed'))).catch(() => setMemories([])); }, []);
   useEffect(() => { const allowed = allowedSkills(mode, platform); setSkill(current => allowed.includes(current) ? current : defaultSkill(mode, platform)); }, [mode, platform]);
-  useEffect(() => { if (formReady) writeStorage('creatoros:compose-form', { topic, context, source, sourceUrl, platform, mode, skill, outputKind, workflowId, workflowArtifact, feedback: feedback || undefined, feedbackNote }); }, [formReady, topic, context, source, sourceUrl, platform, mode, skill, outputKind, workflowId, workflowArtifact, feedback, feedbackNote]);
+  useEffect(() => {
+    if (!formReady) return;
+    // Keep the current form selection separate from the platform/mode that
+    // produced the visible result. This lets a user switch targets without
+    // losing the old artifacts, including across a refresh.
+    const generated = generatedMeta
+      ? { workflowId, workflowArtifact, platform: generatedMeta.platform, mode: generatedMeta.mode, skill: generatedMeta.skill }
+      : workflowId
+        ? { workflowId, workflowArtifact, platform, mode, skill }
+        : null;
+    writeStorage('creatoros:compose-form', {
+      topic,
+      context,
+      source,
+      sourceUrl,
+      platform,
+      mode,
+      skill,
+      outputKind,
+      workflowId: generated?.workflowId || null,
+      workflowArtifact: generated?.workflowArtifact || null,
+      generatedPlatform: generated?.platform || null,
+      generatedMode: generated?.mode || null,
+      generatedSkill: generated?.skill || null,
+      feedback: feedback || undefined,
+      feedbackNote,
+    });
+  }, [formReady, topic, context, source, sourceUrl, platform, mode, skill, outputKind, workflowId, workflowArtifact, generatedMeta, feedback, feedbackNote]);
   useEffect(() => { writeStorage('creatoros:workflow-debug', debugMode); }, [debugMode]);
   const availableSkills = useMemo(() => { const allowed = allowedSkills(mode, platform); const listed = skills.filter(item => allowed.includes(item.name)); return listed.length ? listed : allowed.map(name => ({ name, description: '', layer: 'CREATOROS', needsApi: false, apiConfigured: false })); }, [mode, platform, skills]);
   const workflowPlatform = (value: Platform) => value === 'wechat' ? 'wechat-oa' : value;
@@ -271,7 +298,31 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
       setWorkflowJob(job); syncStreamingPreview(job, metadata.platform); setStage(stageLabels[job.current || Object.entries(job.stages).find(([, value]) => value.status === 'running')?.[0] || ''] || '内容生成');
       await new Promise(resolve => window.setTimeout(resolve, 500));
       if (!workflowWatchRef.current || workflowRunRef.current !== runToken) return;
-      job = await getWorkflow(job.id);
+      try {
+        job = await getWorkflow(job.id);
+      } catch (error) {
+        // A transient poll failure must not turn a still-running server job
+        // into a false "stopped" state. Read one authoritative snapshot
+        // before surfacing an error and leave a resume action when it remains
+        // active.
+        const latest = await getWorkflow(job.id).catch(() => null);
+        if (latest && ['queued', 'running'].includes(latest.status)) {
+          job = latest;
+          setWorkflowJob(latest);
+          syncStreamingPreview(latest, metadata.platform);
+          workflowWatchRef.current = false;
+          setWorkflowWatching(false);
+          setNotice('前台连接暂时中断，后台任务仍在运行；可点击“继续查看状态”恢复。');
+          return;
+        }
+        if (latest) {
+          job = latest;
+          setWorkflowJob(latest);
+          syncStreamingPreview(latest, metadata.platform);
+          continue;
+        }
+        throw error;
+      }
       setWorkflowJob(job);
       syncStreamingPreview(job, metadata.platform);
     }
@@ -342,7 +393,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
         setNotice('前台等待已停止，但后台任务尚未确认取消。请点击“继续查看状态”确认状态，或稍后重试取消。');
         setError(`取消后台任务失败：${workflowErrorText(e)}`);
       } else {
-        setNotice(`后台任务已结束（${workflowStatus(latest.status)}），已刷新状态。`);
+    setNotice(`后台任务已结束（${workflowStatus(latest.status, latest.execution_mode)}），已刷新状态。`);
       }
     } finally {
       if (workflowRunRef.current === runToken) {
@@ -397,9 +448,9 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     const pending = pendingWorkflow.current || saved;
     const targetTopic = (pending?.topic || saved?.topic || '').trim();
     if (!targetTopic) return;
-    const targetPlatform = pending?.platform || saved?.platform || 'wechat';
-    const targetMode = pending?.mode || saved?.mode || '文章';
-    const targetSkill = pending?.skill || saved?.skill || defaultSkill(targetMode, targetPlatform);
+    const targetPlatform = pending?.generatedPlatform || saved?.generatedPlatform || pending?.platform || saved?.platform || 'wechat';
+    const targetMode = pending?.generatedMode || saved?.generatedMode || pending?.mode || saved?.mode || '文章';
+    const targetSkill = pending?.generatedSkill || saved?.generatedSkill || pending?.skill || saved?.skill || defaultSkill(targetMode, targetPlatform);
     const targetId = pending?.workflowId || null;
     let cancelled = false;
     void (async () => {
@@ -481,7 +532,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     setWorkflowWatching(true); setWorkflowStartedAt(Date.now()); setBusy(true); setError(''); setNotice(adjustmentText ? `正在按你的修改要求重新生成，原稿会暂时保留。${revisionWasTruncated ? '原稿超过 8000 字，本次只按前 8000 字调整。' : ''}` : ''); setGatewayBlocked(false); setStage(adjustmentText ? '按意见调整' : '准备工作流'); setOutput(adjustmentText ? originalOutput : ''); setStreamingPreview(''); setStreamingComplete(false); setGeneratedOutput(''); setGeneratedMeta(null); setWorkflowArtifact(null); setWorkflowJob(null); setWorkflowId(null); setDraftId(adjustmentText ? originalDraftId : ''); setQualityReview(''); setFinalMissing(false);
     const requestedPlatform = platform;
     const requestedMode = mode;
-    const requestedOutputKind = platform === 'douyin' ? outputKind : 'standard';
+    const requestedOutputKind = platform === 'xiaohongshu' ? ((mode === '内容+配图' || mode === '配图') ? 'image' : 'text') : mode === '配图' ? 'image' : platform === 'douyin' ? outputKind : 'standard';
     const requestedSkill = requestedOutputKind === 'video' ? 'auto-short-video' : skill;
     const requestedSource = source;
     const requestedSourceUrl = sourceUrl;
@@ -503,7 +554,9 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
       requestedSource ? '素材来源：' + requestedSource : '',
       requestedSourceUrl ? '参考链接：' + requestedSourceUrl : '',
       `输出类型：${requestedMode}`,
-      requestedOutputKind === 'video'
+      requestedOutputKind === 'image'
+        ? '交付要求：只生成小红书真实图片；跳过文章研究与正文生成，直接使用独立生图模型生成并检查 PNG 卡片。'
+        : requestedOutputKind === 'video'
         ? '交付要求：抖音竖屏成片，9:16，1080×1920；依照 Easel auto-short-video 完成真实媒体制作。需要尚未授权的按量付费时先返回制作计划与待确认状态，不自动发起付费请求。'
         : requestedPlatform === 'douyin'
           ? '交付要求：抖音脚本与分镜，不把脚本称为视频文件。'
@@ -577,7 +630,19 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     } finally { setSaving(false); }
   };
   const download = () => { const cleanOutput = sanitizeVisibleText(output); if (!cleanOutput) return; const blob = new Blob([cleanOutput], { type: 'text/markdown;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${topic.slice(0, 24) || 'creatoros-草稿'}.md`; link.click(); URL.revokeObjectURL(link.href); };
-  const markComposerEdited = () => { userEdited.current = true; setError(''); setGatewayBlocked(false); setGeneratedMeta(null); setQualityReview(''); if (!busy && workflowId && !workflowIsActive) { setWorkflowId(null); setWorkflowArtifact(null); setWorkflowJob(null); } };
+  const markComposerEdited = ({ preserveResult = false }: { preserveResult?: boolean } = {}) => {
+    userEdited.current = true;
+    setError('');
+    setGatewayBlocked(false);
+    if (preserveResult) return;
+    setGeneratedMeta(null);
+    setQualityReview('');
+    if (!busy && workflowId && !workflowIsActive) { setWorkflowId(null); setWorkflowArtifact(null); setWorkflowJob(null); }
+  };
+  const announceSelectionChange = (nextPlatform: Platform, nextMode: Mode) => {
+    if (!output || !generatedMeta || (generatedMeta.platform === nextPlatform && generatedMeta.mode === nextMode)) return;
+    setNotice(`已保留当前${platforms[generatedMeta.platform].label}产物；点击生成后会替换为${platforms[nextPlatform].label}${platformOutputLabels[nextPlatform][nextMode]}。`);
+  };
   const workflowIsActive = Boolean(workflowJob && ['queued', 'running'].includes(workflowJob.status));
   const workflowServerStartedAt = workflowJob ? timestampMs(workflowJob.attempt_started || workflowJob.started_at || workflowJob.started || workflowJob.created) : 0;
   const workflowServerFinishedAt = workflowJob ? timestampMs(workflowJob.finished_at || workflowJob.finished) : 0;
@@ -642,9 +707,20 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
   const easelWorkflow = workflowJob?.execution_mode === 'easel-agent-v1';
   const platformResult = workflowJob?.platform_outputs?.[workflowPlatform(generatedMeta?.platform || platform)];
   const outputArtifacts = Array.from(new Set(platformResult?.artifacts || []));
-  const workflowDisplayStatus = workflowJob?.status === 'completed' && (platformResult?.status === 'blocked' || Boolean(platformResult?.missing?.length)) ? '已完成 · 有待补齐' : workflowJob ? workflowStatus(workflowJob.status) : '';
+  const chooseXhsTitle = (nextTitle: string) => {
+    if (!output || platform !== 'xiaohongshu') return;
+    const lines = output.split('\n');
+    const heading = lines.findIndex(line => /^\s*#/.test(line));
+    if (heading >= 0) lines[heading] = `# ${nextTitle}`;
+    else lines.unshift(`# ${nextTitle}`, '');
+    const next = lines.join('\n');
+    userEdited.current = true; outputEdited.current = true; setOutput(next); setGeneratedOutput(next); setError('');
+    setNotice('已选择合规标题；保存或下载前仍可继续编辑。');
+  };
+  const mediaPending = platformResult?.media_status === 'pending' || Boolean(platformResult?.missing?.length);
+  const workflowDisplayStatus = workflowJob?.status === 'completed' && mediaPending ? '文章已完成 · 配图待补齐' : workflowJob ? workflowStatus(workflowJob.status, workflowJob.execution_mode) : '';
   const adaptationIncomplete = Boolean(workflowJob && ['blocked', 'failed', 'interrupted'].includes(workflowJob.stages.adaptation?.status || ''));
-  const retryFromPlatform = finalMissing && (!workflowJob || workflowJob.status === 'completed' || adaptationIncomplete);
+  const retryFromPlatform = (finalMissing || mediaPending) && (!workflowJob || workflowJob.status === 'completed' || adaptationIncomplete);
   const resultLabel = platform === 'douyin' && outputKind === 'video' ? '成片' : platformOutputLabels[platform][mode];
   const compactWorkflow = Boolean(workflowJob?.execution_mode?.startsWith('compact'));
   const displayedWorkflowStages = easelWorkflow && workflowJob ? Object.entries(workflowJob.stages).map(([key, value]) => ({ key, label: value.label || stageLabels[key] || key, keys: [key] })) : compactWorkflow ? compactWorkflowStages : workflowStages.map(key => ({ key, label: stageLabels[key], keys: [key] as const }));
@@ -671,12 +747,12 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     {notice && <Message>{notice}</Message>}
     {error && <Message error>{error}{gatewayBlocked && <><button className="link" onClick={() => navigate('settings')}>去模型设置</button><button className="link" disabled={handoffBusy || !topic.trim()} onClick={() => void saveAndContinue()}>{handoffBusy ? '正在保存主题…' : '保存主题并继续完整工作流'}</button></>}</Message>}
     {(workflowJob || busy) && <section ref={workflowProgressRef} className={`composer-workflow${compactWorkflow ? ' compact' : ''}`} aria-label={easelWorkflow ? '完整创作流程进度' : compactWorkflow ? '三段创作进度' : '六阶段创作进度'} aria-busy={busy || workflowWatching} aria-live="polite">
-      <div className="composer-workflow-head"><div><div className="composer-workflow-title">创作进度 · {busy ? '进行中' : retryFromPlatform ? '缺少平台终稿' : workflowJob ? workflowDisplayStatus : '正在连接模型服务'}</div><p>{workflowJob ? `当前阶段：${workflowCurrentLabel} · ${workflowTimingLabel}${currentTask ? ` · ${currentTask}` : ''}` : '正在连接模型服务并创建内容任务，页面不会静默等待。'}</p></div><div className="composer-workflow-meta"><strong>{formatDuration(workflowElapsed)}</strong><small>本次尝试用时</small></div></div>
+      <div className="composer-workflow-head"><div><div className="composer-workflow-title">创作进度 · {busy ? '进行中' : retryFromPlatform && !mediaPending ? '缺少平台终稿' : workflowJob ? workflowDisplayStatus : '正在连接模型服务'}</div><p>{workflowJob ? `当前阶段：${workflowCurrentLabel} · ${workflowTimingLabel}${currentTask ? ` · ${currentTask}` : ''}` : '正在连接模型服务并创建内容任务，页面不会静默等待。'}</p></div><div className="composer-workflow-meta"><strong>{formatDuration(workflowElapsed)}</strong><small>本次尝试用时</small></div></div>
       {debugMode && workflowJob && <p className="debug-mode-note">{workflowJob.debug_mode ? '正在显示本次任务的执行步骤和耗时。' : '正在显示已有记录；详细调试记录将在下次新建任务时启用。'}</p>}
-      {workflowJob ? <ol>{displayedWorkflowStages.map((group, index) => { const state = workflowStageState(group.keys); const item = workflowJob.stages[group.key]; return <li className={state.done ? 'done' : state.blocked ? 'blocked' : state.active ? 'active' : ''} key={group.key}><b>{state.done ? '✓' : state.blocked ? '!' : index + 1}</b><span>{group.label}<small>{state.active ? `进行中${stageDetail(item) ? ` · ${stageDetail(item)}` : ''}` : state.done ? `已完成${stageDetail(item) ? ` · ${stageDetail(item)}` : ''}` : state.blocked ? '需要重试' : '待开始'}</small>{debugMode && item?.current_task && <em>{item.current_task}</em>}</span></li>; })}</ol> : <div className="composer-workflow-preparing"><span className="workflow-pulse" />正在创建内容任务，通常几秒内会显示第一阶段。</div>}
+      {workflowJob ? <ol>{displayedWorkflowStages.map((group, index) => { const state = workflowStageState(group.keys); const item = workflowJob.stages[group.key]; const reviewSuffix = state.done && workflowJob.execution_mode?.startsWith('compact') ? ' · 仅机械检查，需人工复核' : ''; return <li className={state.done ? 'done' : state.blocked ? 'blocked' : state.active ? 'active' : ''} key={group.key}><b>{state.done ? '✓' : state.blocked ? '!' : index + 1}</b><span>{group.label}<small>{state.active ? `进行中${stageDetail(item) ? ` · ${stageDetail(item)}` : ''}` : state.done ? `已生成${stageDetail(item) ? ` · ${stageDetail(item)}` : ''}${reviewSuffix}` : state.blocked ? '需要重试' : '待开始'}</small>{debugMode && item?.current_task && <em>{item.current_task}</em>}</span></li>; })}</ol> : <div className="composer-workflow-preparing"><span className="workflow-pulse" />正在创建内容任务，通常几秒内会显示第一阶段。</div>}
       {workflowSlow && busy && <div className="composer-workflow-warning">已经等待 {formatDuration(workflowElapsed)}，模型可能仍在处理；点击“停止后台任务”会请求服务端终止本次任务，主题和素材会保留。</div>}
       {debugMode && workflowJob && <details className="workflow-debug-panel"><summary>系统执行日志（已显示 {workflowDebugEvents.length} 条，原始 {workflowDebugRawCount} 条）</summary>{workflowDebugEvents.length ? <ol>{workflowDebugEvents.map((event, index) => <li className={`debug-${event.level || 'info'}`} key={`${String(event.id ?? index)}-${index}`}><time>{formatDebugTime(event.at ?? event.timestamp ?? event.time)}</time><strong>{event.stage ? `${stageLabels[event.stage] || event.stage} · ` : ''}{debugEventText(event)}</strong>{event.tool && <code>{event.tool}</code>}{debugEventDuration(event) && <small>{debugEventDuration(event)}</small>}{event.details && <pre>{JSON.stringify(event.details, null, 2)}</pre>}</li>)}</ol> : <p>正在等待后端记录第一条事件……</p>}</details>}
-      <div className="composer-workflow-actions">{busy && <button type="button" className="secondary" disabled={cancelBusy} onClick={stopWatchingWorkflow}>{cancelBusy ? '正在停止后台任务…' : '停止后台任务'}</button>}{!busy && workflowIsActive && <button type="button" className="secondary" onClick={() => void resumeWorkflow()}>继续查看状态</button>}{!busy && workflowJob && !workflowIsActive && (retryFromPlatform || workflowJob.status !== 'completed') && <button type="button" className="secondary" onClick={() => void retryCurrentWorkflow()}>{retryFromPlatform ? '从平台改写重试' : '从未完成阶段重试'}</button>}</div>
+      <div className="composer-workflow-actions">{busy && <button type="button" className="secondary" disabled={cancelBusy} onClick={stopWatchingWorkflow}>{cancelBusy ? '正在停止后台任务…' : '停止后台任务'}</button>}{!busy && workflowIsActive && <button type="button" className="secondary" onClick={() => void resumeWorkflow()}>继续查看状态</button>}{!busy && workflowJob && !workflowIsActive && (retryFromPlatform || workflowJob.status !== 'completed') && <button type="button" className="secondary" onClick={() => void retryCurrentWorkflow()}>{mediaPending ? '重试配图（不重写文章）' : retryFromPlatform ? '从平台改写重试' : '从未完成阶段重试'}</button>}</div>
     </section>}
     {qualityReview && <details className="quality-review"><summary>查看发布前质量检查（不会混入正文或下载文件）</summary><pre>{qualityReview}</pre></details>}
     <div className="composer-layout">
@@ -687,22 +763,22 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
         <label className="composer-label">补充素材 <span>可选</span><textarea disabled={busy} rows={6} value={context} onChange={e => { markComposerEdited(); setContext(e.target.value); }} placeholder="粘贴热点摘要、链接要点、自己的观点或素材…" /></label>
         <div className="composer-divider" />
         <div className="composer-panel-head"><span className="step-badge">02</span><div><h2>你准备发到哪里</h2><p>不同平台，会用不同的说法。</p></div></div>
-        <div className="platform-picker">{(Object.keys(platforms) as Platform[]).map(key => <button type="button" disabled={busy} key={key} aria-pressed={platform === key} className={platform === key ? 'selected' : ''} onClick={() => { markComposerEdited(); setPlatform(key); }}><span className={`platform-dot ${key}`}>{key === 'wechat' ? '微' : key === 'xiaohongshu' ? '红' : '音'}</span><span><strong>{platforms[key].label}</strong><small>{platforms[key].short}</small></span>{platform === key && <StudioIcon name="check" size={16} />}</button>)}</div>
+        <div className="platform-picker">{(Object.keys(platforms) as Platform[]).map(key => <button type="button" disabled={busy} key={key} aria-pressed={platform === key} className={platform === key ? 'selected' : ''} onClick={() => { announceSelectionChange(key, mode); markComposerEdited({ preserveResult: Boolean(output || workflowJob) }); setPlatform(key); }}><span className={`platform-dot ${key}`}>{key === 'wechat' ? '微' : key === 'xiaohongshu' ? '红' : '音'}</span><span><strong>{platforms[key].label}</strong><small>{platforms[key].short}</small></span>{platform === key && <StudioIcon name="check" size={16} />}</button>)}</div>
         <div className="composer-divider" />
         <div className="composer-panel-head"><span className="step-badge">03</span><div><h2>你要带走什么</h2><p>{platform === 'douyin' ? '先选脚本，或继续制作成片。' : '完整内容会包含平台需要的配图和排版。'}</p></div></div>
-        <div className="result-picker" role="group" aria-label="选择交付内容"><button type="button" disabled={busy} aria-pressed={modeIncludes(mode, '文章')} className={modeIncludes(mode, '文章') ? 'selected' : ''} onClick={() => { markComposerEdited(); setMode('文章'); }}><StudioIcon name="file" size={18} /><span><strong>{platform === 'wechat' ? '整套公众号文章' : platform === 'xiaohongshu' ? '整套小红书笔记' : '抖音脚本'}</strong><small>{platform === 'wechat' ? '正文、配图和可复制的 HTML 排版' : platform === 'xiaohongshu' ? '卡片、发布文案、标题与话题' : '口播、分镜、字幕与封面方案，不含视频'}</small></span>{modeIncludes(mode, '文章') && <StudioIcon name="check" size={16} />}</button><button type="button" disabled={busy} aria-pressed={mode === '配图'} className={mode === '配图' ? 'selected' : ''} onClick={() => { markComposerEdited(); setMode('配图'); setOutputKind('standard'); }}><StudioIcon name="image" size={18} /><span><strong>只做配图</strong><small>按素材制作封面、卡片或信息图</small></span>{mode === '配图' && <StudioIcon name="check" size={16} />}</button></div>
+        <div className="result-picker" role="group" aria-label="选择交付内容"><button type="button" disabled={busy} aria-pressed={platform === 'xiaohongshu' ? mode === '文章' : modeIncludes(mode, '文章')} className={(platform === 'xiaohongshu' ? mode === '文章' : modeIncludes(mode, '文章')) ? 'selected' : ''} onClick={() => { announceSelectionChange(platform, '文章'); markComposerEdited({ preserveResult: Boolean(output || workflowJob) }); setMode('文章'); setOutputKind(platform === 'xiaohongshu' ? 'text' : 'standard'); }}><StudioIcon name="file" size={18} /><span><strong>{platform === 'wechat' ? '整套公众号文章' : platform === 'xiaohongshu' ? '仅生成小红书文案' : '抖音脚本'}</strong><small>{platform === 'wechat' ? '正文、配图和可复制的 HTML 排版' : platform === 'xiaohongshu' ? '标题、正文和话题；不生成图片，不可作为完整图文发布' : '口播、分镜、字幕与封面方案，不含视频'}</small></span>{(platform === 'xiaohongshu' ? mode === '文章' : modeIncludes(mode, '文章')) && <StudioIcon name="check" size={16} />}</button>{platform === 'xiaohongshu' && <button type="button" disabled={busy} aria-pressed={mode === '内容+配图'} className={mode === '内容+配图' ? 'selected' : ''} onClick={() => { announceSelectionChange(platform, '内容+配图'); markComposerEdited({ preserveResult: Boolean(output || workflowJob) }); setMode('内容+配图'); setOutputKind('standard'); }}><StudioIcon name="image" size={18} /><span><strong>完整图文交付</strong><small>文案 + 3–9 张真实 PNG 卡片；生图不可用时明确阻断</small></span>{mode === '内容+配图' && <StudioIcon name="check" size={16} />}</button>}<button type="button" disabled={busy} aria-pressed={mode === '配图'} className={mode === '配图' ? 'selected' : ''} onClick={() => { announceSelectionChange(platform, '配图'); markComposerEdited({ preserveResult: Boolean(output || workflowJob) }); setMode('配图'); setOutputKind('standard'); }}><StudioIcon name="image" size={18} /><span><strong>{platform === 'xiaohongshu' ? '只生成卡片' : '只做配图'}</strong><small>按素材制作封面、卡片或信息图</small></span>{mode === '配图' && <StudioIcon name="check" size={16} />}</button></div>
         {platform === 'douyin' && mode !== '配图' && <label className="profile-consent"><input type="checkbox" checked={outputKind === 'video'} disabled={busy} onChange={e => { markComposerEdited(); setOutputKind(e.target.checked ? 'video' : 'standard'); }} /><span><strong>继续生成成片</strong><small>制作 9:16 竖屏视频；可能需要媒体模型配置。按量付费环节会先给出计划，等待单独确认。</small></span></label>}
         <small className="selection-summary">将生成：{platforms[platform].label}{resultLabel}。</small>
-        <div className="media-capability-note" role="note"><StudioIcon name="image" size={16} /><span><strong>{platform === 'douyin' && outputKind !== 'video' ? '脚本完成与视频完成分别显示' : '按真实产物显示完成状态'}</strong><small>{platform === 'xiaohongshu' ? '文本可以先生成；未配置独立生图模型时，卡片会单独标记待补齐。' : '只有实际生成并检查过的文件才会出现在产物列表；缺少素材或能力会保留待补齐状态。'}</small></span></div>
-        <details className="advanced-skill" open={showAdvanced} onToggle={e => setShowAdvanced((e.currentTarget as HTMLDetailsElement).open)}><summary><span>更换写作方式</span><small>当前推荐：{labels[skill] || skill}</small></summary><select disabled={busy} value={skill} onChange={e => { markComposerEdited(); setSkill(e.target.value); }}>{availableSkills.map(item => <option key={item.name} value={item.name}>{labels[item.name] || item.name}{item.needsApi && !item.apiConfigured ? ' · 需配置' : ''}</option>)}</select></details>
+        <div className="media-capability-note" role="note"><StudioIcon name="image" size={16} /><span><strong>{platform === 'xiaohongshu' && mode === '文章' ? '仅文案交付' : platform === 'xiaohongshu' && mode === '内容+配图' ? '完整图文交付门禁' : platform === 'douyin' && outputKind !== 'video' ? '脚本完成与视频完成分别显示' : '按真实产物显示完成状态'}</strong><small>{platform === 'xiaohongshu' && mode === '文章' ? '只生成可编辑文案；真实 PNG 未请求，因此不能显示为完整图文或可发布。' : platform === 'xiaohongshu' ? '只有 3–9 张真实 PNG、尺寸/格式和元数据检查全部通过，才会显示完整交付。' : '只有实际生成并检查过的文件才会出现在产物列表；缺少素材或能力会保留待补齐状态。'}</small></span></div>
+        <details className="advanced-skill" open={showAdvanced} onToggle={e => setShowAdvanced((e.currentTarget as HTMLDetailsElement).open)}><summary><span>更换写作方式</span><small>当前推荐：{labels[skill] || skill}</small></summary><label className="sr-only" htmlFor="writing-skill">写作方式</label><select id="writing-skill" aria-label="写作方式" disabled={busy} value={skill} onChange={e => { markComposerEdited({ preserveResult: Boolean(output) }); setSkill(e.target.value); }}>{availableSkills.map(item => <option key={item.name} value={item.name}>{labels[item.name] || item.name}{item.needsApi && !item.apiConfigured ? ' · 需配置' : ''}</option>)}</select></details>
         <label className="profile-consent"><input type="checkbox" checked={useProfile} onChange={e => setUseProfile(e.target.checked)} disabled={busy || !profile} /><span><strong>{profile ? `本次使用写作偏好 v${profileVersion || '?'}` : '暂无可用写作偏好'}</strong><small>仅发送平台风格、读者和已确认偏好到当前模型服务；身份与经历留在本机。</small></span></label>
         <label className="debug-preference"><input type="checkbox" checked={debugMode} onChange={e => setDebugMode(e.target.checked)} disabled={busy} /><span><strong>开启调试模式</strong><small>显示系统正在执行的步骤、任务、工具和耗时，设置会保存在本机。</small></span></label>
         <button className="primary composer-submit" disabled={busy || workflowIsActive || !topic.trim()} onClick={() => void generate()}><StudioIcon name="spark" size={18} />{busy ? '正在' + (stage || '创作') + '…' : workflowIsActive ? '已有任务处理中…' : `生成${platforms[platform].label}${resultLabel}`}</button><small className="truth-note">使用 Easel 的平台生成流程完成创作与检查；只生成本地产物，发布由你另行决定。</small>
       </section>
-      <section className="output-panel"><div className="output-panel-head"><div><span className="page-kicker">YOUR DRAFT</span><h2>{output ? busy ? '上一份草稿（新生成中）' : '这就是你的草稿' : hasStreamingPreview ? streamingFailed ? '未完成预览' : streamingSettled ? '生成完成，正在载入终稿' : '正在实时生成' : '成稿会出现在这里'}</h2>{busy && previousOutput && <small className="output-preserved-note">原稿已保留；新结果完成后会替换这里。</small>}{hasStreamingPreview && <small className="streaming-preview-note">已收到 {streamingPreview.length.toLocaleString()} 字{streamingFailed ? '，本次未完成，不能保存' : '，任务完成后可编辑、保存和下载'}</small>}</div>{output && <span className="ready-state"><span />{busy ? '等待新结果' : '可编辑'}</span>}{hasStreamingPreview && !output && <span className="streaming-state"><span />{streamingFailed ? '未完成' : '实时接收'}</span>}</div>
+      <section className="output-panel">{platform === 'xiaohongshu' && platformResult?.title_candidates?.length ? <div className="xhs-title-candidates" role="group" aria-label="合规标题候选"><strong>合规标题候选（1–20 字）</strong><div>{platformResult.title_candidates.map(candidate => <button type="button" className={candidate === platformResult.title ? 'selected' : 'secondary'} key={candidate} disabled={busy || !output} onClick={() => chooseXhsTitle(candidate)}>{candidate}</button>)}</div><small>不合规标题不会作为完整交付；可直接选择后继续编辑。</small></div> : null}<div className="output-panel-head"><div><span className="page-kicker">YOUR DRAFT</span><h2>{output ? busy ? '上一份草稿（新生成中）' : '这就是你的草稿' : hasStreamingPreview ? streamingFailed ? '未完成预览' : streamingSettled ? '生成完成，正在载入终稿' : '正在实时生成' : '成稿会出现在这里'}</h2>{busy && previousOutput && <small className="output-preserved-note">原稿已保留；新结果完成后会替换这里。</small>}{hasStreamingPreview && <small className="streaming-preview-note">已收到 {streamingPreview.length.toLocaleString()} 字{streamingFailed ? '，本次未完成，不能保存' : '，任务完成后可编辑、保存和下载'}</small>}</div>{output && <span className="ready-state"><span />{busy ? '等待新结果' : '可编辑'}</span>}{hasStreamingPreview && !output && <span className="streaming-state"><span />{streamingFailed ? '未完成' : '实时接收'}</span>}</div>
         {output ? <><textarea disabled={busy} className="output-editor" value={output} onChange={e => { userEdited.current = true; outputEdited.current = true; setError(''); setOutput(e.target.value); }} aria-label="生成结果" /><div className="learning-feedback"><div><strong>给下次生成留个建议</strong><small>这不会直接修改当前正文；选择后点“保存建议”，下次生成时会参考。</small>{feedback && <small className="feedback-status" role="status">{feedbackSaved ? '这条建议已保存，下次生成时会参考。' : '已选择，还没保存。'}</small>}</div><div className="feedback-buttons"><button type="button" disabled={busy} aria-pressed={feedback === 'keep'} className={feedback === 'keep' ? 'selected' : ''} onClick={() => { setFeedback('keep'); setFeedbackSaved(false); setNotice('已选择“像我”。如需记录，请点击“保存建议”。'); }}>像我</button><button type="button" disabled={busy} aria-pressed={feedback === 'adjust'} className={feedback === 'adjust' ? 'selected' : ''} onClick={() => { setFeedback('adjust'); setFeedbackSaved(false); setNotice('已选择“需要调整”。写下具体问题后，可以按这条意见重新生成。'); }}>需要调整</button>{feedback === 'adjust' && <button type="button" disabled={busy || !feedbackNote.trim()} onClick={() => void generate(feedbackNote)}>按这条意见重新生成</button>}{feedback && <button type="button" disabled={busy || feedbackSaved} onClick={() => { persistFeedback(platform, mode); }}>保存建议</button>}</div>{feedback && <input disabled={busy} value={feedbackNote} onChange={e => { setFeedbackNote(e.target.value); setFeedbackSaved(false); }} placeholder={feedback === 'keep' ? '哪一点最像你？可选' : '例如：把第三段写得更具体，删掉广告口吻'} />}</div><div className="output-actions"><button className="primary" disabled={saving || busy} onClick={() => void save()}><StudioIcon name="check" size={15} />{saving ? '正在保存…' : '保存到我的内容'}</button><button className="secondary" disabled={busy} onClick={download}><StudioIcon name="download" size={15} />下载 Markdown</button><button className="quiet-button" disabled={busy} onClick={() => { workflowRunRef.current += 1; workflowWatchRef.current = false; setWorkflowWatching(false); setWorkflowJob(null); setWorkflowId(null); setWorkflowArtifact(null); setGeneratedMeta(null); setGeneratedOutput(''); setQualityReview(''); setStreamingPreview(''); setStreamingComplete(false); setFinalMissing(false); setFeedback(''); setFeedbackNote(''); setFeedbackSaved(false); setDraftId(''); setOutput(''); setNotice('已清空当前产物；主题和素材仍保留。'); }}>清空</button></div></> : hasStreamingPreview ? <><textarea disabled readOnly className="output-editor streaming-output" value={streamingPreview} aria-label="实时生成预览" /><p className="streaming-preview-footnote">这是模型正在返回的预览，尚未写入最终稿文件。</p></> : <div className="output-placeholder"><span><StudioIcon name="spark" size={23} /></span><h3>准备好了吗？</h3><p>左侧选好主题、平台和交付组合，点击生成，内容会在这里出现。</p></div>}
         {output && busy && streamingPreview && <section className="live-stream-panel" aria-live="polite"><div><strong>实时生成预览</strong><small>新内容正在分段返回，原稿仍保留在上方</small></div><textarea disabled readOnly className="output-editor streaming-output" value={streamingPreview} aria-label="新内容实时生成预览" /><p className="streaming-preview-footnote">已收到 {streamingPreview.length.toLocaleString()} 字，任务完成并通过校验后才会替换原稿。</p></section>}
-        {platformResult && <section className="quality-review" aria-label="真实产物与校验"><h3>已生成的产物</h3><p>{readableStatus(platformResult.status)} · {platformResult.media_kind === 'script' ? '脚本，不含视频文件' : platformResult.media_kind === 'video' ? '视频制作' : platformResult.media_kind === 'image' ? '图文卡片' : '平台内容包'}</p>{platformResult.missing?.length ? <ul>{platformResult.missing.map((item, index) => <li key={`${item}-${index}`}>待补齐：{item}</li>)}</ul> : null}{outputArtifacts.length ? <ul>{outputArtifacts.map(path => <li key={path} style={{ marginBottom: 14 }}><a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer">{artifactLabel(path)} · {path.split('/').pop()}</a> <a href={mediaUrl(path)} download>下载</a>{isImageArtifact(path) && <a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 8 }}><img src={mediaUrl(path)} alt={`已生成图片：${path.split('/').pop()}`} loading="lazy" style={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 4 }} /></a>}{isVideoArtifact(path) && <video src={mediaUrl(path)} controls preload="metadata" style={{ display: 'block', maxWidth: '100%', maxHeight: 360, marginTop: 8 }} />}</li>)}</ul> : <p>还没有可下载的产物文件。</p>}{Boolean(platformResult.checks?.length) && <details><summary>查看产物校验</summary><ul>{platformResult.checks.map((check, index) => <li key={index}>{checkSummary(check)}</li>)}</ul></details>}{easelWorkflow && <small>本次流程：{platformResult.skill || '平台创作流程'} · 已记录 {workflowJob?.execution_receipts?.length || 0} 条执行回执。</small>}</section>}
+        {platformResult && <section className="quality-review" aria-label="真实产物与校验"><h3>已生成的产物</h3><p>{mediaPending ? '文章已完成 · 配图待补齐' : readableStatus(platformResult.status)} · {platformResult.media_kind === 'copy' ? '仅文案，不含图片' : platformResult.media_kind === 'script' ? '脚本，不含视频文件' : platformResult.media_kind === 'video' ? '视频制作' : platformResult.media_kind === 'image' ? '图文卡片' : '平台内容包'}</p>{platformResult.missing?.length ? <ul>{platformResult.missing.map((item, index) => <li key={`${item}-${index}`}>待补齐：{item}</li>)}</ul> : null}{outputArtifacts.length ? <ul>{outputArtifacts.map(path => <li key={path} style={{ marginBottom: 14 }}><a className="artifact-file" href={mediaUrl(path)} target="_blank" rel="noopener noreferrer">{artifactLabel(path)} · {path.split('/').pop()}</a> <a className="artifact-download" href={mediaUrl(path)} download>下载</a>{isImageArtifact(path) && <a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 8 }}><img src={mediaUrl(path)} alt={`已生成图片：${path.split('/').pop()}`} loading="lazy" style={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 4 }} /></a>}{isVideoArtifact(path) && <video src={mediaUrl(path)} controls preload="metadata" style={{ display: 'block', maxWidth: '100%', maxHeight: 360, marginTop: 8 }} />}</li>)}</ul> : <p>还没有可下载的产物文件。</p>}{Boolean(platformResult.checks?.length) && <details><summary>查看产物校验</summary><ul>{platformResult.checks.map((check, index) => <li key={index}>{checkSummary(check)}</li>)}</ul></details>}{easelWorkflow && <small>本次流程：{platformResult.skill || '平台创作流程'} · 已记录 {workflowJob?.execution_receipts?.length || 0} 条执行回执。</small>}</section>}
       </section>
     </div>
   </div>;

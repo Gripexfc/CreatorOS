@@ -214,7 +214,7 @@ function ModelDropdown({ id, value, options, disabled, onChange }: {
       role="combobox"
       aria-haspopup="listbox"
       aria-expanded={open}
-      aria-controls={menuId}
+      aria-controls={open ? menuId : undefined}
       aria-activedescendant={open ? `${id}-option-${activeIndex}` : undefined}
       disabled={disabled}
       onClick={() => open ? setOpen(false) : openMenu()}
@@ -252,6 +252,7 @@ export function ModelSettingsPage() {
   const [model, setModel] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [key, setKey] = useState('');
+  const [clearKey, setClearKey] = useState(false);
   const [name, setName] = useState('');
   const [primary, setPrimary] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -294,7 +295,7 @@ export function ModelSettingsPage() {
   const endpointChanged = Boolean(
     current?.keyMasked && preset.supportsBaseUrl && normalizeBaseUrl(baseUrl || preset.baseUrl) !== normalizeBaseUrl(displayBaseUrl(current)),
   );
-  const needsKey = !key.trim() && (!current?.keyMasked || endpointChanged);
+  const needsKey = !key.trim() && !clearKey && (!current?.keyMasked || endpointChanged);
 
   const hydrate = (nextPreset: ModelProviderPreset, row: ModelRow | null) => {
     setProviderId(nextPreset.id);
@@ -306,6 +307,7 @@ export function ModelSettingsPage() {
     setName(nextPreset.slot === 'custom' ? row?.name || nextPreset.providerName || '' : '');
     setPrimary(row ? row.role === '主' : true);
     setKey('');
+    setClearKey(false);
   };
 
   const discoverFor = async (
@@ -493,6 +495,7 @@ export function ModelSettingsPage() {
         baseUrl: requestedBase,
         key: key.trim(),
         primary,
+        clearKey,
       }]);
       if (response.ok === false || /失败|未完成|未能启动/i.test(response.note || '')) {
         throw new Error(response.note || '本地创作服务没有完成配置同步');
@@ -501,6 +504,7 @@ export function ModelSettingsPage() {
       const nextRow = editableRowFor(nextRows, preset);
       setRows(nextRows);
       setKey('');
+      setClearKey(false);
       clearDraft(providerId);
       void discoverFor(preset, nextRow, { baseUrl: requestedBase, key: key.trim(), model: model.trim(), name });
       const nextGateway = await getModelGatewayStatus().catch(() => gateway);
@@ -578,6 +582,7 @@ export function ModelSettingsPage() {
     (current && (model.trim() !== current.model.trim()
       || normalizeBaseUrl(baseUrl || preset.baseUrl) !== normalizeBaseUrl(displayBaseUrl(current))
       || Boolean(key.trim())
+      || clearKey
       || (preset.slot === 'custom' && name.trim() !== (current.name || '').trim())
       || primary !== (current.role === '主')))
     || (!current && (model.trim() || baseUrl.trim() || key.trim() || name.trim())),
@@ -648,7 +653,7 @@ export function ModelSettingsPage() {
               <h2 id="model-config-title">配置模型服务</h2>
               <p>选择模型服务商和模型，通常只需要补充 API Key（访问密钥）。</p>
             </div>
-            <span className={`model-status ${gateway?.gatewayOnline ? 'online' : ''}`}><i aria-hidden="true" />{gatewayLabel}</span>
+            <span className={`model-status ${verifiedPrimary && !partialBackupFailure ? 'online' : ''}`}><i aria-hidden="true" />{gatewayLabel}</span>
           </div>
 
           <div className="model-fields">
@@ -659,7 +664,7 @@ export function ModelSettingsPage() {
                 value={providerId}
                 options={MODEL_PROVIDER_PRESETS.map(item => ({ value: item.id, label: item.label, description: item.description }))}
                 onChange={value => selectProvider(value as ModelProviderId)}
-                disabled={loading || saving}
+                disabled={loading || saving || testing}
               />
             </div>
 
@@ -677,47 +682,54 @@ export function ModelSettingsPage() {
           rememberDraft(providerId, { model: nextModel, baseUrl, key, name, primary });
           setModel(nextModel);
         }}
-                disabled={loading || saving}
+                disabled={loading || saving || testing}
               />
               {(discoveringModels || discoveryDetail) && <small className="model-catalog-status" aria-live="polite">{discoveringModels ? '正在读取服务商可用模型…' : discoveryDetail}</small>}
               {!modelIsKnown && <input id="model-custom" className="model-custom-input" value={model} onChange={(event) => {
                 const nextModel = event.target.value;
                 rememberDraft(providerId, { model: nextModel, baseUrl, key, name, primary });
                 setModel(nextModel);
-              }} placeholder="粘贴服务商提供的模型名称或编号" autoComplete="off" />}
+              }} placeholder="粘贴服务商提供的模型名称或编号" autoComplete="off" disabled={loading || saving || testing} aria-label="手动输入模型 ID" />}
             </div>
 
             <div className="model-field model-key-field">
-              <div className="model-field-label"><label htmlFor="model-key">API Key（访问密钥）</label><small>{current?.keyMasked ? `已保存 ${current.keyMasked}，留空即可沿用` : '服务商提供，只在本机保存，不会显示明文'}</small></div>
+              <div className="model-field-label"><label htmlFor="model-key">API Key（访问密钥）</label><span className="model-key-meta">{current?.keyMasked && <small>{clearKey ? '保存时会移除已保存密钥' : `已保存 ${current.keyMasked}，留空即可沿用`}</small>}{current?.keyMasked && <button type="button" className="model-key-clear" onClick={() => { setClearKey(value => !value); setKey(''); }} disabled={loading || saving || testing}>{clearKey ? '撤销清除' : '清除密钥'}</button>}{!current?.keyMasked && <small>服务商提供，只在本机保存，不会显示明文</small>}</span></div>
               <input id="model-key" className="model-key-input" type="password" value={key} onChange={(event) => {
                 const nextKey = event.target.value;
                 rememberDraft(providerId, { model, baseUrl, key: nextKey, name, primary });
+                setClearKey(false);
                 setKey(nextKey);
-              }} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴 API Key'} autoComplete="new-password" />
+              }} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴 API Key'} autoComplete="new-password" disabled={loading || saving || testing} />
             </div>
           </div>
 
-          <details className="model-advanced" open>
-            <summary>服务地址与高级设置 <span>服务商或兼容接口需要填写</span></summary>
+          <section className="model-advanced" aria-labelledby="model-endpoint-title">
+            <div className="model-advanced-heading">
+              <div>
+                <h3 id="model-endpoint-title">服务地址</h3>
+                <p>兼容接口需要填写；更换地址后请重新填写 API Key。</p>
+              </div>
+              <span className="model-section-badge">连接入口</span>
+            </div>
             <div className="model-advanced-grid">
               {preset.slot === 'custom' && !preset.providerName && <label>服务商标识<input value={name} onChange={(event) => {
                   const nextName = event.target.value;
                   rememberDraft(providerId, { model, baseUrl, key, name: nextName, primary });
                   setName(nextName);
-                }} placeholder="例如 my-provider" autoComplete="off" /></label>}
+                }} placeholder="例如 my-provider" autoComplete="off" disabled={loading || saving || testing} /></label>}
               {preset.supportsBaseUrl && <label>服务地址{preset.slot !== 'custom' || preset.providerName ? '（可选）' : ''}<input value={baseUrl} onChange={(event) => {
                   const nextBaseUrl = event.target.value;
                   rememberDraft(providerId, { model, baseUrl: nextBaseUrl, key, name, primary });
                   setBaseUrl(nextBaseUrl);
-                }} placeholder="https://api.example.com/v1" autoComplete="url" /></label>}
+                }} placeholder="https://api.example.com/v1" autoComplete="url" disabled={loading || saving || testing} /></label>}
               <label className="model-primary-toggle"><input type="checkbox" checked={primary} onChange={(event) => {
                 const nextPrimary = event.target.checked;
                 rememberDraft(providerId, { model, baseUrl, key, name, primary: nextPrimary });
                 setPrimary(nextPrimary);
-              }} />设为内容生成主模型</label>
+              }} disabled={loading || saving || testing} />设为内容生成主模型</label>
             </div>
-            <p>预设服务商通常不用修改地址，留空会使用默认地址。更换服务地址后必须重新填写 API Key。</p>
-          </details>
+            <p>预设服务商可以留空使用默认地址；自定义服务商请填写完整的兼容接口地址。</p>
+          </section>
 
           <div className="model-action-row">
             <button className="primary" disabled={loading || saving || testing || !hydrated} onClick={() => void saveAndTest()}>{saving ? '保存中…' : testing ? '检查中…' : '保存并测试'}</button>
@@ -730,7 +742,7 @@ export function ModelSettingsPage() {
           })}</div>}
         </section>
 
-        <aside className="model-side-panel">
+        <aside className="model-side-panel" aria-label="模型配置说明">
           <div className="model-side-status"><span className={`model-side-mark ${primaryPassed ? 'is-success' : testFailed ? 'is-error' : ''}`} aria-hidden="true">{primaryPassed ? '✓' : testFailed ? '!' : '·'}</span><strong>{gatewayTitle}</strong><p>{gatewayDescription}</p></div>
           <div className="model-side-list"><h3>你只需要准备</h3><ul><li>一个模型服务商账号</li><li>一个 API Key（访问密钥）</li><li>一个可用的模型</li></ul></div>
           <details className="model-help"><summary>遇到问题？</summary><p>“保存并测试”会发起一次最小生成请求，验证服务地址、模型、权限和账户额度；请求可能产生极少量费用。通过后再回到内容工作区生成完整内容。</p></details>
@@ -763,6 +775,8 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
   const [baseUrl, setBaseUrl] = useState('');
   const [key, setKey] = useState('');
   const [key2, setKey2] = useState('');
+  const [clearKey, setClearKey] = useState(false);
+  const [clearKey2, setClearKey2] = useState(false);
   const [primary, setPrimary] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -772,7 +786,7 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
   const [testResult, setTestResult] = useState<ModelSelftestResult | null>(null);
   const rows = (channels?.[channel]?.rows || []) as ModelRow[];
   const current = rows.find(row => row.slot === slot) || rows[0] || null;
-  const hasSavedKey = Boolean(key.trim() || current?.keyMasked);
+  const hasSavedKey = Boolean(key.trim() || (!clearKey && current?.keyMasked));
   // The image skill always needs an explicit endpoint and model.  Video
   // providers such as DashScope may use their own default endpoint/model, so
   // only providers marked as requiring a base URL are blocked here.
@@ -791,10 +805,12 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
     setBaseUrl(row?.baseUrl && !['—', '官方', '（未配置）'].includes(row.baseUrl) ? row.baseUrl : '');
     setKey('');
     setKey2('');
+    setClearKey(false);
+    setClearKey2(false);
     setPrimary(row?.role === '主');
   };
   const load = async () => {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setNotice(''); setTestResult(null);
     try {
       const response = await getModelChannels();
       setChannels(response.channels);
@@ -808,24 +824,31 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
     const next = rows.find(row => row.slot === value) || null;
     hydrate(next);
   };
-  const save = async () => {
-    if (!slot) { setError('请先选择媒体服务商。'); return; }
-    if (channel === 'image' && !model.trim()) { setError('生图必须填写图片模型 ID，不能沿用聊天模型。'); return; }
-    if (channel === 'image' && !baseUrl.trim()) { setError('生图必须填写 API 根地址，不能沿用聊天模型地址。'); return; }
-    if (channel === 'video' && !current?.baseOptional && !baseUrl.trim()) { setError('该视频服务商需要填写 API 根地址。'); return; }
-    if (!key.trim() && !current?.keyMasked) { setError('首次配置需要填写 API Key。'); return; }
+  const save = async (): Promise<boolean> => {
+    if (!slot) { setError('请先选择媒体服务商。'); return false; }
+    if (channel === 'image' && !model.trim()) { setError('生图必须填写图片模型 ID，不能沿用聊天模型。'); return false; }
+    if (channel === 'image' && !baseUrl.trim()) { setError('生图必须填写 API 根地址，不能沿用聊天模型地址。'); return false; }
+    if (channel === 'video' && !current?.baseOptional && !baseUrl.trim()) { setError('该视频服务商需要填写 API 根地址。'); return false; }
+    if (!key.trim() && !clearKey && !current?.keyMasked) { setError('首次配置需要填写 API Key。'); return false; }
     setSaving(true); setError(''); setNotice(''); setTestResult(null);
     try {
-      const response = await saveModelConfig([{ slot, model: model.trim(), baseUrl: baseUrl.trim(), key: key.trim(), key2: key2.trim(), primary }], channel);
+      const response = await saveModelConfig([{ slot, model: model.trim(), baseUrl: baseUrl.trim(), key: key.trim(), key2: key2.trim(), primary, clearKey, clearKey2 }], channel);
+      if (response.ok === false || /失败|未完成|未能启动/i.test(response.note || '')) {
+        throw new Error(response.note || '本地创作服务没有完成配置同步');
+      }
       setChannels(response.channels);
       const next = (response.channels[channel]?.rows || []).find(row => row.slot === slot) as ModelRow | undefined;
       hydrate(next || null);
       setNotice('独立媒体配置已保存。下一步仍需运行对应媒体技能，确认真实 PNG/MP4 产物。');
+      return true;
     } catch (e) {
       setError(`保存失败：${modelErrorText(e, 'save')}`);
+      return false;
     } finally { setSaving(false); }
   };
   const test = async () => {
+    const saved = await save();
+    if (!saved) return;
     setTesting(true); setError(''); setNotice('');
     try {
       const response = await selftestModel(channel);
@@ -841,7 +864,7 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
       <div><h2 id={`${channel}-model-title`}>{copy.title}</h2><p>{copy.description}</p></div>
       <span className={`model-status ${mediaStatus === '已配置' ? 'online' : ''}`}><i aria-hidden="true" />{mediaStatus}</span>
     </div>
-    <div className="media-setup-steps" aria-label="媒体模型配置步骤">
+    <div className="media-setup-steps" role="group" aria-label="媒体模型配置步骤">
       <span><b>1</b>选服务商</span><i aria-hidden="true">→</i><span><b>2</b>补模型和 Key</span><i aria-hidden="true">→</i><span><b>3</b>保存后检查</span>
     </div>
     {error && <Message error>{error}</Message>}
@@ -852,11 +875,11 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
         <div className="model-field"><div className="model-field-label"><label htmlFor={`${channel}-provider`}>服务商</label><small>与聊天模型分开保存</small></div><ModelDropdown id={`${channel}-provider`} value={slot} options={rows.map(row => ({ value: row.slot || '', label: row.name || row.slot || '未命名服务商', description: row.sub || (row.baseOptional ? '可使用默认地址' : '需要服务地址') }))} onChange={selectSlot} disabled={saving || testing} /></div>
         <label className="model-field"><span className="model-field-label"><span>模型</span><small>{current?.modelEditable === false ? '由服务商默认' : '服务商提供的模型 ID'}</small></span><input value={model} onChange={e => setModel(e.target.value)} placeholder={current?.modelEditable === false ? '服务商默认模型' : '填写模型 ID'} disabled={saving || testing || current?.modelEditable === false} /></label>
         <label className="model-field"><span className="model-field-label"><span>服务地址</span><small>{current?.baseOptional ? '可留空使用默认地址' : '更换地址时必须重填 Key'}</small></span><input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder={current?.baseOptional ? '留空使用默认地址' : 'https://api.example.com/v1'} disabled={saving || testing || current?.baseEditable === false} /></label>
-        <label className="model-field model-key-field"><span className="model-field-label"><span>{current?.key2Label || 'API Key'}</span><small>{current?.keyMasked ? `已保存 ${current.keyMasked}，留空沿用` : '只在本机保存，不显示明文'}</small></span><input type="password" value={key} onChange={e => setKey(e.target.value)} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴服务商提供的 Key'} autoComplete="new-password" disabled={saving || testing} /></label>
-        {!!current?.key2Label && <label className="model-field model-key-field"><span className="model-field-label"><span>{current.key2Label}（第二项）</span><small>{current.key2Masked ? `已保存 ${current.key2Masked}，留空沿用` : '部分服务商需要第二项密钥'}</small></span><input type="password" value={key2} onChange={e => setKey2(e.target.value)} placeholder={current.key2Masked ? '已配置，留空表示沿用' : '粘贴第二项密钥'} autoComplete="new-password" disabled={saving || testing} /></label>}
+        <label className="model-field model-key-field"><span className="model-field-label"><span>API Key</span><span className="model-key-meta">{current?.keyMasked && <small>{clearKey ? '保存时会移除已保存密钥' : `已保存 ${current.keyMasked}，留空沿用`}</small>}{current?.keyMasked && <button type="button" className="model-key-clear" onClick={() => { setClearKey(value => !value); setKey(''); }} disabled={saving || testing}>{clearKey ? '撤销清除' : '清除密钥'}</button>}{!current?.keyMasked && <small>只在本机保存，不显示明文</small>}</span></span><input type="password" value={key} onChange={e => { setClearKey(false); setKey(e.target.value); }} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴服务商提供的 Key'} autoComplete="new-password" disabled={saving || testing} /></label>
+        {!!current?.key2Label && <label className="model-field model-key-field"><span className="model-field-label"><span>{current.key2Label}</span><span className="model-key-meta">{current.key2Masked && <small>{clearKey2 ? '保存时会移除已保存密钥' : `已保存 ${current.key2Masked}，留空沿用`}</small>}{current.key2Masked && <button type="button" className="model-key-clear" onClick={() => { setClearKey2(value => !value); setKey2(''); }} disabled={saving || testing}>{clearKey2 ? '撤销清除' : '清除密钥'}</button>}{!current.key2Masked && <small>部分服务商需要第二项密钥</small>}</span></span><input type="password" value={key2} onChange={e => { setClearKey2(false); setKey2(e.target.value); }} placeholder={current.key2Masked ? '已配置，留空表示沿用' : '粘贴第二项密钥'} autoComplete="new-password" disabled={saving || testing} /></label>}
       </div>
       <label className="model-primary-toggle media-primary-toggle"><input type="checkbox" checked={primary} onChange={e => setPrimary(e.target.checked)} disabled={saving || testing} /><span><strong>设为该媒体通道的默认服务商</strong><small>生成时优先使用这一家，其他服务商保留为备用。</small></span></label>
-      <div className="model-action-row"><button className="primary" onClick={() => void save()} disabled={loading || saving || testing}>{saving ? '保存中…' : '保存配置'}</button><button className="secondary" onClick={() => void test()} disabled={loading || saving || testing}>{testing ? '检查中…' : '检查连接'}</button><button className="quiet-button" onClick={() => void load()} disabled={loading || saving || testing}>重新读取</button></div>
+      <div className="model-action-row"><button className="primary" onClick={() => void save()} disabled={loading || saving || testing}>{saving ? '保存中…' : '保存配置'}</button><button className="secondary" onClick={() => void test()} disabled={loading || saving || testing}>{testing ? '检查中…' : '保存并检查'}</button><button className="quiet-button" onClick={() => void load()} disabled={loading || saving || testing}>重新读取</button></div>
       {testResult && <div className="model-test-results"><div><strong className={testResult.ok ? 'model-test-ok' : 'model-test-fail'}>{testResult.ok ? '配置前置检查通过' : '配置前置检查失败'}</strong><span>{testResult.baseUrl}</span><small>{testResult.detail}</small></div></div>}
     </>}
   </section>;

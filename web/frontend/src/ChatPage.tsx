@@ -20,13 +20,14 @@ export function ChatPage({ navigate }: { navigate: Navigate }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const abort = useRef<AbortController | null>(null);
+  const stopRequested = useRef(false);
 
   useEffect(() => () => abort.current?.abort(), []);
 
   const send = async () => {
     const text = input.trim();
     if (!text || busy) return;
-    setInput(''); setNotice(''); setBusy(true);
+    setInput(''); setNotice(''); setBusy(true); stopRequested.current = false;
     setMessages(prev => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     const controller = new AbortController(); abort.current = controller;
     try {
@@ -37,7 +38,7 @@ export function ChatPage({ navigate }: { navigate: Navigate }) {
       }
       const reader = response.body?.getReader();
       if (!reader) throw new Error('服务没有返回流');
-      const decoder = new TextDecoder(); let buffer = ''; let done = false;
+      const decoder = new TextDecoder(); let buffer = ''; let done = false; let streamedText = '';
       while (!done) {
         const chunk = await reader.read(); done = chunk.done;
         buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !done });
@@ -47,6 +48,7 @@ export function ChatPage({ navigate }: { navigate: Navigate }) {
           if (!line) {
             if (event === 'token' || event === 'message') {
               let value = data; try { value = JSON.parse(data) as string; } catch { /* raw SSE */ }
+              streamedText += value;
               setMessages(prev => { const next = [...prev]; const last = next.length - 1; next[last] = { ...next[last], content: next[last].content + value }; return next; });
             }
             if (event === 'error') throw new Error(data);
@@ -56,13 +58,15 @@ export function ChatPage({ navigate }: { navigate: Navigate }) {
           if (line.startsWith('data:')) data += line.slice(5).trim();
         }
       }
+      if (!streamedText.trim()) throw new Error('模型没有返回内容');
     } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
-        const message = (error as Error).message || '对话暂不可用';
+      const aborted = (error as Error).name === 'AbortError';
+      if (!aborted || stopRequested.current) {
+        const message = aborted ? '本轮已由你停止，模型没有返回内容。' : (error as Error).message || '对话暂不可用';
         setMessages(prev => { const next = [...prev]; const last = next.length - 1; next[last] = { role: 'assistant', blocked: true, content: `暂时无法继续：${message}\n\n请先到“模型设置”完成配置并测试。` }; return next; });
-        setNotice('本轮没有生成内容，状态已保留为阻断。');
+        setNotice(aborted ? '本轮已停止，未生成内容；问题已保留，可以修改后重试。' : '本轮没有生成内容，状态已保留为阻断。');
       }
-    } finally { abort.current = null; setBusy(false); }
+    } finally { abort.current = null; setBusy(false); stopRequested.current = false; }
   };
 
   return <>
@@ -73,7 +77,7 @@ export function ChatPage({ navigate }: { navigate: Navigate }) {
     <section className="panel creator-chat">
       <div className="creator-chat-head"><div><span className="kicker">CREATOROS CHAT</span><h2>先问一个具体问题</h2></div><span className="state">本地会话</span></div>
       <div className="creator-chat-log" aria-live="polite">{messages.length === 0 ? <div className="empty"><h2>还没有消息</h2><p>可以从来源核验、选题角度、平台改写或质量检查开始。</p></div> : messages.map((message, index) => <article className={`creator-chat-message ${message.role} ${message.blocked ? 'blocked' : ''}`} key={index}><span>{message.role === 'user' ? '你' : '知序'}</span><p>{message.content || (busy && index === messages.length - 1 ? '正在连接模型服务…' : '')}</p></article>)}</div>
-      <div className="creator-chat-compose"><textarea rows={3} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder="输入研究问题、改写要求或平台限制…" disabled={busy} /><div className="action-row"><small className="hint">Enter 发送 · Shift+Enter 换行 · 不会伪造模型结果</small>{busy ? <button className="secondary" onClick={() => abort.current?.abort()}>停止</button> : <button className="primary" disabled={!input.trim()} onClick={() => void send()}>发送</button>}</div></div>
+      <div className="creator-chat-compose"><textarea aria-label="输入研究问题、改写要求或平台限制" rows={3} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder="输入研究问题、改写要求或平台限制…" disabled={busy} /><div className="action-row"><small className="hint">Enter 发送 · Shift+Enter 换行 · 不会伪造模型结果</small>{busy ? <button className="secondary" onClick={() => { stopRequested.current = true; abort.current?.abort(); }}>停止</button> : <button className="primary" disabled={!input.trim()} onClick={() => void send()}>发送</button>}</div></div>
     </section>
   </>;
 }
