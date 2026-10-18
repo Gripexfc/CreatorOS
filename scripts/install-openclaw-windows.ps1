@@ -3,7 +3,19 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
 $node = Get-Command node.exe -ErrorAction SilentlyContinue
-$openclaw = Get-Command openclaw.exe -ErrorAction SilentlyContinue
+
+function Find-OpenClaw {
+    # npm's Windows global install normally creates openclaw.cmd. Some
+    # distributions also expose an extensionless shim, while an .exe is not
+    # guaranteed to exist at all.
+    $command = Get-Command openclaw.cmd -ErrorAction SilentlyContinue
+    if ($null -eq $command) {
+        $command = Get-Command openclaw -ErrorAction SilentlyContinue
+    }
+    return $command
+}
+
+$openclaw = Find-OpenClaw
 
 if ($null -eq $node -or $null -eq $npm) {
     throw '找不到 Node.js/npm。请先安装 Node.js 24.16+，再重新运行 install-openclaw-windows.bat。'
@@ -29,9 +41,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "OpenClaw 安装失败（退出码 $LASTEXITCODE）。请检查 npm 网络或权限。"
 }
 
-$openclaw = Get-Command openclaw.exe -ErrorAction SilentlyContinue
+$openclaw = Find-OpenClaw
 if ($null -eq $openclaw) {
-    throw 'OpenClaw 已尝试安装，但当前窗口找不到 openclaw.exe。请关闭窗口、重新打开后再运行。'
+    throw 'OpenClaw 已尝试安装，但当前窗口找不到 openclaw.cmd。请关闭窗口、重新打开后再运行。'
 }
 
 Write-Host 'OpenClaw 安装完成：' -ForegroundColor Green

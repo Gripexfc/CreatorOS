@@ -1990,9 +1990,19 @@ def _minimal_openclaw_config() -> dict:
     before the optional CLI is installed; gateway startup will then report the
     missing CLI explicitly instead of discarding the user's configuration.
     """
+    workspace = PROJECT_ROOT / 'openclaw' / 'workspace'
+    agent_dir = PROJECT_ROOT / 'openclaw' / 'agents' / 'main'
     return {
         "models": {"providers": {}},
-        "agents": {"defaults": {"model": {}}},
+        "agents": {
+            "defaults": {"workspace": str(workspace), "model": {}},
+            "entries": {
+                "main": {
+                    "workspace": str(workspace),
+                    "agentDir": str(agent_dir),
+                },
+            },
+        },
         "gateway": {
             "mode": "local",
             "bind": "loopback",
