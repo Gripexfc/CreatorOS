@@ -1,91 +1,305 @@
-> 2026-10-01 能力迁移版：默认入口是 CreatorOS 自有页面，官方 Easel 仅作为 `vendor/easel/` 下的只读参考。运行使用 Python 3.12 的 `.venv312`，执行 `make dev` 即可同时启动 API（8000）和前端（5173）。官方运行数据、账号会话和配置仅写入隔离的 `runtime/`，不会复用 `.easel` 的登录状态。差异矩阵见 `docs/22-easel-official-parity-matrix.md`，验收结果见 `docs/23-easel-parity-validation.md`。
+# 知序创作台
 
-# CreatorOS
+知序创作台是一个运行在本机的内容创作工作台。它把热点发现、写作画像、主题策划、平台改写、内容保存和账号复盘放在同一个本地应用里，适合个人创作者在自己的电脑上完成从选题到交付的完整过程。
 
-面向个人内容创作者的本地优先内容操作系统。
+仓库中的 Python 包名仍是 `creatoros`，前端目录是 `web/frontend`。产品默认使用中文界面，数据和运行日志保存在本机，不会自动上传到云端。
 
-**当前阶段：参考 [ZJU-REAL/Easel](https://github.com/ZJU-REAL/Easel)，把产品收缩成一条易上手的创作链路：看热点 → 选感兴趣的话题 → 选择平台和内容类型 → 调用对应 Skill/Agent 输出文章或配图。默认入口只保留“看热点 / 开始创作 / 我的内容”三页；公众号、小红书、抖音由平台选择决定结构和风格。真实 LLM、图片/视频生成与外部平台发布仍按真实连接状态显示，不会把本地模板标成高质量成稿或“越用越强”。**
+## 能做什么
 
-项目位置：本仓库根目录。本目录与 ContentPilot、`.easel` 独立。S1 只新增设计文档，S2 新增了自己的骨架和测试；没有复制参考项目代码、提示词、素材、用户数据或凭据。
+默认侧栏只保留六个入口，其他页面通过工作流按钮进入：
 
-## 快速启动与测试
+| 页面 | 用途 |
+| --- | --- |
+| **画像** | 记录身份、领域、读者、内容支柱、语气、禁用词和平台偏好。每次保存都会生成一个版本，可以查看差异，也可以恢复旧版本形成新版本。 |
+| **热点话题** | 读取抖音、微博、知乎公开热榜，支持搜索、刷新、查看来源、收藏线索，并把一个话题带入创作。数据失败时会明确显示不可用，不会用假数据填充。 |
+| **内容工作区** | 从主题或素材开始，选择公众号、小红书或抖音，决定文章、配图、图文或脚本交付方式，执行研究、选题、主稿、平台适配、检查和保存流程。结果可以继续编辑、保存到内容库或下载。 |
+| **模型设置** | 配置模型服务商、服务地址、访问密钥和模型编号，获取模型列表并执行最小测试。页面会显示本地模型网关是否已启动。 |
+| **账号分析** | 导入公众号、小红书或抖音后台导出的 CSV/JSON，查看样本分布、平台表现、内容支柱和可解释的优化线索。没有真实数据时保持空白，不生成虚假的增长率。 |
+| **拆解** | 粘贴文章、笔记、脚本或网页链接，按目标平台拆解标题、开头、结构、信息密度和互动触发，再生成属于自己的原创角度。不会逐句拼接原文。 |
 
-新拉项目只需要准备 `make`、[uv](https://docs.astral.sh/uv/) 和 Node.js 20+（包含 npm）。Python 3.12 虚拟环境由 `make install` 自动创建；首次安装会下载 Python、后端依赖和前端依赖。
+工作流中还提供内容库、发布前检查、公众号草稿、输出文件、账号连接和对话助手等页面。它们都以“本地产物”和“真实平台回执”分开显示：生成完成不等于发布完成，保存草稿也不等于已经提交平台。
+
+## 第一次使用
+
+1. 启动前后端服务。
+2. 打开“模型设置”，填写服务商、服务地址、访问密钥和模型编号，点击“保存并测试”。
+3. 打开“画像”，填写自己的定位、读者和表达习惯并保存。
+4. 进入“热点话题”选择一个线索，或直接进入“内容工作区”输入主题。
+5. 选择目标平台和交付方式，补充自己的素材，开始生成。
+6. 检查结果和待补材料，修改正文后保存到内容库或下载文件。
+7. 后续在“账号分析”导入真实后台数据，再根据自己的样本复盘下一轮选题。
+
+没有配置模型时，页面仍然可以打开、查看本地数据和使用热点/导入功能；需要调用模型的生成和拆解操作会明确提示先完成模型设置。
+
+## macOS / Linux 启动
+
+### 环境要求
+
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 20 以上（包含 npm）
+
+### 安装依赖
 
 ```bash
 cd CreatorOS
-make install   # 首次拉取或依赖更新时执行
-make dev       # 日常只需这一条
+make install
 ```
 
-首次安装并启动也可以直接执行 `make install && make dev`。
-
-`make dev` 会在同一个终端同时启动 API 和前端，并等待两个服务都就绪：API 默认在 `http://127.0.0.1:8000`，前端默认在 `http://127.0.0.1:5173`。浏览器打开 `http://127.0.0.1:5173/#/create` 即可进入内容工作区；按 `Ctrl-C` 会同时停止两个服务。首次启动会自动执行数据库迁移，只有需要单独升级数据库时才运行 `make db-upgrade`。
-
-如果 5173 已被其他前端服务占用，可以执行 `make dev FRONTEND_PORT=5176`；脚本会在启动前检查端口，避免只启动一半导致页面出现 `Failed to fetch`。
-
-日常启动使用现有的数据库和运行配置。数据默认写入 `CreatorOS/data/`；可通过 `CREATOROS_DATA_DIR` 指向独立目录。运行配置与账号会话在 `runtime/`。`.env.example` 仅是变量说明，后端不会自动加载根目录 `.env`；需要自定义时应通过命令行环境变量传入。若只需要单独调试某一侧，仍可分别运行 `make backend` 或 `make frontend`。
+`make install` 会创建 `.venv312`、安装后端依赖，并在 `web/frontend` 安装前端依赖。首次安装也可以直接执行：
 
 ```bash
-make test
-make lint
+make install && make dev
 ```
 
-### Windows 一键安装与启动
+### 一键启动
 
-Windows 不需要 `make`。先把仓库克隆或下载到本地，确保电脑已安装 **Node.js 24.16+**（包含 npm）；安装脚本会检查 Python，并在需要时自动安装 `uv` 和 OpenClaw。如果电脑没有 Python，请先安装 Python 3.12（安装时勾选 **Add Python to PATH**）。
+```bash
+make dev
+```
 
-在项目根目录双击一次 `install-windows.bat`，它会创建 `.venv312`、安装后端依赖、前端依赖和 OpenClaw。以后双击 `start-all-windows.bat`（或 `start-windows.bat`），脚本会先准备 Windows 运行目录联接，再分别打开 API 和前端窗口，服务就绪后自动打开 `http://127.0.0.1:5173/#/create`。要停止项目，关闭这两个终端窗口即可。若只需修复 OpenClaw，可单独运行 `install-openclaw-windows.bat`。
+启动后访问：
 
-要让热点每天自动更新，首次在项目根目录双击 `setup-daily-trends-windows.bat`，默认每天 08:00 执行一次；也可以在 CMD 中运行 `setup-daily-trends-windows.bat 21:30` 设置其他时间。任务会优先刷新正在运行的 API；API 未启动时会独立抓取并把结果写入 `data/trend-cache.json`，网页下次打开会读取这份缓存。抓取日志保存在 `runtime/logs/`。Windows 启动和每日任务会在证书吊销服务不可达时使用系统 `curl.exe` 的兼容兜底，其他环境仍保持正常 TLS 校验。
+- 前端：<http://127.0.0.1:5173/#/create>
+- API 状态：<http://127.0.0.1:8000/api/v1/status>
 
-脚本使用项目目录自身定位文件，所以项目放在桌面或包含中文、空格的路径下都可以。运行数据仍写在本机的 `data/` 和 `runtime/`，不会提交到 Git。
+`make dev` 会同时启动 API 和前端，并等待两个服务就绪。回到终端按 `Ctrl-C` 会同时停止它们。
 
-S2/S3/S4a/S4b/S4c 的安装、迁移幂等、画像版本/差异/恢复、简报版本、内容修订冲突、平台编辑、内容库回读、热点/指标 API、输入资产、热点入任务、导出、前端类型检查、前端单元测试、生产构建和 API 测试已经实际执行。当前生成仍使用离线模板适配器，不代表接入真实模型或发布平台。
+前端端口被占用时，可以换一个端口：
 
-公众号真实适配器是显式选择的可选能力：设置 `CREATOROS_WECHAT_ADAPTER=browser` 后安装 `pip install -e '.[dev,wechat]'`，登录会话保存在本地 `CREATOROS_WECHAT_PROFILE_DIR`，不写入数据库或日志。扫码、登录过期恢复、封面上传、草稿提交和账号读取均由用户点击触发；Mock 状态和 CSV/JSON 导入不会被标为真实成功。
+```bash
+make dev FRONTEND_PORT=5176
+```
 
-## 阅读顺序
+对应页面地址是 <http://127.0.0.1:5176/#/create>。
 
-1. [Easel 三平台界面恢复记录](docs/21-easel-three-platform-ui-restore.md)：当前界面与官方 Easel 主链路、三平台白名单和真实能力边界。
-2. [参考项目分析与差异](docs/01-reference-analysis.md)：当前源码实际有什么、哪些思路可以借鉴、哪些问题不应沿用。
-3. [产品定义与边界](PRODUCT.md)：用户任务、三平台交付物、质量与操作边界、需求验收映射。
-4. [技术与交互设计](DESIGN.md)：架构、页面、状态机、适配器、恢复与安全。
-5. [数据模型与接口契约](docs/02-data-and-api.md)：分阶段模型、版本/溯源关系、接口和失败语义。
-6. [切片实施与测试计划](docs/03-delivery-plan.md)：按指定六步推进，每次只实现一个可验收切片。
-7. [许可证与来源边界](docs/04-provenance-and-licenses.md)：当前参考仓库的许可证核查结果与后续依赖登记规则。
-8. [本阶段交付记录](docs/05-phase-1-handoff.md)：文件清单、检查结果、限制和回滚。
-9. [S3 垂直切片交付记录](docs/07-s3-handoff.md)：主题、简报、三平台草稿、用户修改和能力记忆。
-10. [S3 可用性返工记录](docs/08-usability-rework.md)：为什么原演示不满足验收，以及本次返工边界。
-11. [S4a/S4b 交付记录](docs/09-s4-ops-handoff.md)：手动热点池、CSV/JSON 账号导入、结构性分析和边界。
-12. [Git 基线功能核对](docs/10-git-parity-audit.md)：参考项目实际能力、本轮补齐、验收证据和未实现边界。
-13. [功能差异矩阵](docs/11-feature-parity-matrix.md)：参考能力、CreatorOS 扩展、连接器状态和外部限制。
-14. [视觉重设计与原型](docs/12-design-system-and-prototype.md)：SaaS token、信息架构、路由和可运行原型。
-15. [公众号草稿中心切片](docs/13-slice-2-draft-center-handoff.md)：封面、提交事件、失败重试和回滚。
-16. [第一阶段体验审计](docs/14-experience-audit.md)：只读核对现有页面、API、模型、测试和外部边界。
-17. [全功能差异矩阵](docs/15-full-feature-parity.md)：ContentPilot 能力、文章生成项、Skills 映射和第二阶段入口。
-18. [UX 重构记录](docs/16-ux-redesign.md)：总览恢复快照、输入自动保存和状态设计。
-19. [文章生成系统](docs/17-generation-system.md)：当前模板边界、三平台字段和后续适配器契约。
-20. [当前验收报告](docs/18-acceptance-report.md)：修改文件、测试、外部限制、回滚清单和下一条切片。
+### 分开启动
 
-## 预期核心流程
+只启动后端：
 
-发现热点或输入主题 → 确认选题与研究简报 → 创建公众号/小红书/抖音三份平台草稿 → 分平台编辑与质量检查 → 进入发布中心预览 → 用户明确连接账号后执行对应平台动作 → 回看可用的数据与修改记录。未接入真实模型、研究源或平台账号时，界面只显示本地模板、待核验或未连接状态。
+```bash
+make backend
+```
 
-内容库保存不等于审核通过，审核通过不等于草稿提交，草稿提交不等于发布。默认没有自动发布、自动群发或自动登录。
+只启动前端：
 
-## 下一次开发范围
+```bash
+make frontend
+```
 
-已完成本轮 S4c 的本地输入、网页链接、公开热榜、热点入任务、文件资产保存和产物导出；RSS 与更多官方源仍可继续扩展。
+手动启动后端时，确保前端代理指向 `http://127.0.0.1:8000`。首次启动会自动执行数据库迁移；需要单独执行迁移时运行：
 
-完整内容生产闭环在 S3；本地输入、公开热榜、热点入任务和导出在 S4c；手动热点与 CSV/JSON 导入在 S4a/S4b；RSS、真实媒体生成、实验和记忆增强仍待后续阶段。详见[实施计划](docs/03-delivery-plan.md)。
+```bash
+make db-upgrade
+```
 
-## 本地数据与授权
+## Windows 安装与启动
 
-未来默认使用 `CreatorOS/data/creatoros.sqlite3` 和 `CreatorOS/data/assets/`，支持配置独立数据目录。内容资产默认只写入此项目；导出到其它目录必须由用户主动选择。
+### 安装要求
 
-密钥只通过系统凭据存储或进程内输入使用；仓库、应用日志、生成文本、导出包不保存凭据。没有模型配置时明确显示未配置；演示数据和测试替身不冒充真实生成或账号表现。
+- Windows 10/11
+- Node.js 24.16 以上，包含 npm
+- Python 3.12，并勾选 **Add Python to PATH**
+- 能访问 npm 和 Python 包下载地址的网络
 
-## 许可证状态
+Windows 安装脚本会自动创建 `.venv312`、安装后端和前端依赖，并安装本地模型网关 OpenClaw。模型网关用于把模型服务接入内容生成流程；不配置模型密钥时，前端仍能启动，但生成会停在模型配置提示处。
 
-本轮没有引入第三方源码，也没有给参考项目补设或更换许可证。当前 ContentPilot 仓库未找到项目级 LICENSE/NOTICE，因此不以其源码为复制模板。CreatorOS 的对外分发许可在正式分发前确定；当前文档不构成对参考项目再许可。
+### 一键安装
+
+将仓库放到本地后，在项目根目录双击：
+
+```text
+install-windows.bat
+```
+
+也可以在 PowerShell 中运行：
+
+```powershell
+cd C:\Users\你的用户名\Desktop\CreatorOS
+.\install-windows.bat
+```
+
+### 一键启动前后端
+
+安装完成后，在项目根目录双击：
+
+```text
+start-all-windows.bat
+```
+
+脚本会依次完成以下工作：
+
+1. 准备 `runtime` 和模型工作目录。
+2. 检查 8000 端口；没有服务时启动 API，已有健康 API 时复用它。
+3. 等待数据库迁移和 API 就绪。
+4. 检查 5173 端口；没有前端时启动 Vite，已有前端时复用它。
+5. 检查模型网关状态；如果已经保存模型配置，会尝试启动本地模型服务。
+6. 自动打开 <http://127.0.0.1:5173/#/create>。
+
+停止服务时，关闭脚本打开的 API PowerShell 窗口和前端 CMD 窗口即可。代码更新后，先关闭旧窗口，再重新运行启动脚本；浏览器使用 `Ctrl+F5` 强制刷新。
+
+### Windows 分开启动命令
+
+PowerShell 中启动 API：
+
+```powershell
+cd C:\Users\你的用户名\Desktop\CreatorOS
+.\.venv312\Scripts\python.exe -m creatoros web --host 127.0.0.1 --port 8000
+```
+
+PowerShell 中启动前端：
+
+```powershell
+cd C:\Users\你的用户名\Desktop\CreatorOS\web\frontend
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+Git Bash 中启动 API：
+
+```bash
+cd /c/Users/你的用户名/Desktop/CreatorOS
+./.venv312/Scripts/python.exe -m creatoros web --host 127.0.0.1 --port 8000
+```
+
+Git Bash 中启动前端：
+
+```bash
+cd /c/Users/你的用户名/Desktop/CreatorOS/web/frontend
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+在 `cmd.exe` 中，路径要使用 Windows 写法，不要写 `./`：
+
+```bat
+cd /d C:\Users\你的用户名\Desktop\CreatorOS
+.venv312\Scripts\python.exe -m creatoros web --host 127.0.0.1 --port 8000
+```
+
+如果只需要重新安装模型网关，可以双击：
+
+```text
+install-openclaw-windows.bat
+```
+
+### Windows 每日热点
+
+首次设置每天自动抓取热点：
+
+```bat
+setup-daily-trends-windows.bat
+```
+
+默认每天 08:00 执行。需要自定义时间时，例如每天 21:30：
+
+```bat
+setup-daily-trends-windows.bat 21:30
+```
+
+任务会优先刷新正在运行的 API；API 未启动时会独立抓取并写入 `data/trend-cache.json`。日志写入 `runtime/logs/`。手动抓取可以运行：
+
+```powershell
+.\.venv312\Scripts\python.exe -m creatoros fetch-trends --platforms douyin,weibo,zhihu --limit 12
+```
+
+## 常用命令
+
+```bash
+# 运行后端测试和前端测试
+make test
+
+# 编译 Python、检查前端类型
+make lint
+
+# 前端生产构建
+cd web/frontend && npm run build
+
+# 单独升级数据库
+make db-upgrade
+
+# 抓取公开热点并写入本地缓存
+.venv312/bin/python -m creatoros fetch-trends --platforms douyin,weibo,zhihu --limit 12
+```
+
+Windows 使用 `.venv312\Scripts\python.exe`，macOS/Linux 使用 `.venv312/bin/python`。
+
+## 配置与本地数据
+
+默认配置不需要创建 `.env`。需要自定义时，通过进程环境变量传入：
+
+| 变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `CREATOROS_DATA_DIR` | 项目根目录 `data/` | SQLite、素材、热点缓存和本地账号工作目录 |
+| `CREATOROS_HOST` | `127.0.0.1` | API 监听地址 |
+| `CREATOROS_PORT` | `8000` | API 端口 |
+| `CREATOROS_FRONTEND_ORIGIN` | `http://127.0.0.1:5173` | 前端来源校验 |
+| `CREATOROS_WECHAT_ADAPTER` | `mock` | 公众号连接方式；真实浏览器连接需额外安装依赖 |
+| `CREATOROS_WECHAT_PROFILE_DIR` | `data/wechat-profile/` | 公众号浏览器会话目录 |
+
+主要本地目录：
+
+- `data/creatoros.sqlite3`：任务、画像、草稿、版本和导入记录。
+- `data/assets/`：用户主动上传的素材和内容附件。
+- `data/trend-cache.json`：公开热点缓存。
+- `runtime/`：运行目录、模型工作区和日志。
+- `web/frontend/dist/`：前端生产构建输出，开发启动不依赖它。
+
+这些运行数据已加入 Git 忽略规则，不会随代码提交。备份或迁移时，请按需复制 `data/` 和 `runtime/`，不要提交访问密钥、Cookie、二维码或浏览器会话。
+
+## 外部平台与模型边界
+
+- 热点数据来自公开榜单，只是选题线索；原始来源、抓取时间和失败状态会保留。
+- 账号分析只分析你导入的真实数据，不会自动猜测行业基准。
+- 生成内容需要可用的模型服务和访问密钥；本地模板或演示状态不会标成真实模型结果。
+- 登录、读取账号、提交草稿和发布都需要用户明确操作；知序不会代填密码，也不会自动群发。
+- 保存到内容库表示可以继续编辑、回看和下载，不代表已经审核通过或发布成功。
+
+## 常见问题
+
+### 页面提示 `ECONNREFUSED 127.0.0.1:8000`
+
+API 没有启动，或浏览器连接到了已经退出的旧进程。关闭占用 8000 的旧终端，再运行 `start-all-windows.bat`；也可以先用上面的手动 API 命令确认后端日志。
+
+### Windows 提示端口已被占用
+
+PowerShell 查看占用进程：
+
+```powershell
+Get-NetTCPConnection -LocalPort 8000,5173 -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess
+```
+
+结束进程：
+
+```powershell
+Stop-Process -Id 进程号 -Force
+```
+
+确认没有旧窗口后，再重新启动。
+
+### Windows 提示无法创建目录联接或 `WinError 1314`
+
+优先使用 `start-all-windows.bat`，不要直接导入内部模块。若仍提示权限不足，在 Windows 设置中打开“开发者模式”，或用管理员身份运行一次启动脚本。
+
+### 模型设置已保存但仍不能生成
+
+先确认服务地址、访问密钥和模型编号正确，再点击“保存并测试”。Windows 用户还要确认 OpenClaw 已安装，启动脚本日志显示模型网关已启动；修改配置后请重启 API。
+
+### 热点显示“暂时无法获取”
+
+这是外部榜单或网络请求失败的真实状态。先点击页面刷新；如果仍失败，查看 `runtime/logs/`，或手动执行 `fetch-trends` 检查网络和证书环境。已有缓存会在可用时继续被页面读取。
+
+### 浏览器看不到刚更新的 Logo 或样式
+
+停止旧前端后重新运行启动脚本，并在页面按 `Ctrl+F5`。如果 5173 仍复用旧 Vite 进程，先结束该进程再启动。
+
+## 开发检查
+
+提交前建议运行：
+
+```bash
+git diff --check
+make test
+make lint
+cd web/frontend && npm run build
+```
+
+后端接口文档在 API 启动后可通过 <http://127.0.0.1:8000/docs> 查看。
