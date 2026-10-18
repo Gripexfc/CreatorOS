@@ -16,6 +16,7 @@ import secrets
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -45,7 +46,13 @@ def _is_directory_link(path: Path) -> bool:
     """Return True for symlinks and Windows junctions."""
     try:
         is_junction = getattr(path, "is_junction", None)
-        return path.is_symlink() or bool(is_junction and is_junction())
+        if path.is_symlink() or bool(is_junction and is_junction()):
+            return True
+        # Python 3.11 (used by the Windows venv in the reported traceback)
+        # has no Path.is_junction(). Detect the NTFS reparse-point flag
+        # directly so junctions are never passed to shutil.rmtree().
+        attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+        return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
     except OSError:
         return False
 
