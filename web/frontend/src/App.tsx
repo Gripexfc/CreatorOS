@@ -118,10 +118,9 @@ function ThemeDropdown({ value, onChange }: { value: ThemeMode; onChange: (value
   };
 
   return <div className={`theme-select ${open ? 'is-open' : ''}`} ref={rootRef}>
-    <button
+    <button type="button"
       ref={triggerRef}
       id="theme-select-trigger"
-      type="button"
       className="theme-select-trigger"
       role="combobox"
       aria-label="切换外观"
@@ -136,10 +135,9 @@ function ThemeDropdown({ value, onChange }: { value: ThemeMode; onChange: (value
       <StudioIcon name="chevron-down" size={13} />
     </button>
     {open && <div id={menuId} className="theme-select-menu" role="listbox" aria-labelledby="theme-select-trigger">
-      {themeOptions.map((option, index) => <button
+      {themeOptions.map((option, index) => <button type="button"
         id={`theme-option-${index}`}
         key={option.value}
-        type="button"
         role="option"
         aria-selected={option.value === value}
         className={index === activeIndex ? 'is-active' : ''}
@@ -184,7 +182,11 @@ export default function App() {
     return () => media.removeEventListener('change', applyTheme);
   }, [theme]);
   useEffect(() => {
-    const change = () => { setRoute(routeFromHash(window.location.hash)); window.scrollTo(0, 0); };
+    const change = () => {
+      setRoute(routeFromHash(window.location.hash));
+      window.scrollTo(0, 0);
+      requestAnimationFrame(() => document.getElementById('main')?.focus());
+    };
     window.addEventListener('hashchange', change);
     return () => window.removeEventListener('hashchange', change);
   }, []);
@@ -238,7 +240,7 @@ export default function App() {
       <nav className="studio-nav studio-nav-utility" aria-label="研究与设置导航"><span className="studio-nav-heading">研究与设置</span>{renderNav(utilityKeys)}</nav>
       <div className="studio-sidebar-bottom">
         <div className="sidebar-workflow" role="group" aria-label="创作流程"><span>发现线索</span><StudioIcon name="arrow" size={12} /><span>形成作品</span></div>
-        <button className="studio-connection" onClick={() => check()} title="重新检查知序本地服务"><span className={online ? 'connection-dot online' : 'connection-dot'} />{online === null ? '正在连接知序本地服务' : online ? '知序本地服务已连接' : '重新连接知序本地服务'}</button>
+        <button type="button" className="studio-connection" onClick={() => check()} title="重新检查知序本地服务"><span className={online ? 'connection-dot online' : 'connection-dot'} />{online === null ? '正在连接知序本地服务' : online ? '知序本地服务已连接' : '重新连接知序本地服务'}</button>
       </div>
     </aside>
     <div className="studio-body">
@@ -247,7 +249,7 @@ export default function App() {
         <div className="studio-utilities"><form className="studio-search-shell" aria-label="搜索工作区" onSubmit={submitGlobalSearch}><StudioIcon name="search" size={15} /><input aria-label="搜索热点或来源" value={globalSearch} onChange={event => setGlobalSearch(event.target.value)} placeholder="搜索热点或来源，按回车" /></form><span className="studio-local"><i className={online ? 'online' : ''} />{online === null ? '正在连接知序本地服务' : online ? '知序本地服务已连接' : '知序本地服务未连接'}</span><div className="theme-control"><span>外观</span><ThemeDropdown value={theme} onChange={setTheme} /></div></div>
       </header>
       <main id="main" tabIndex={-1} className="studio-main" key={route.view + route.id}>
-        {online === false && <div className="message error" role="alert">知序本地服务暂时无法连接，内容保存和读取可能受影响。<button className="link" onClick={() => check()}>重新检查</button></div>}
+        {online === false && <div className="message error" role="alert">知序本地服务暂时无法连接，内容保存和读取可能受影响。<button type="button" className="link" onClick={() => check()}>重新检查</button></div>}
         <Suspense fallback={<div className="studio-empty" role="status">正在加载页面…</div>}>
           {route.view === 'hotspots' && <HotspotsPage navigate={navigate} />}
           {route.view === 'breakdown' && <BreakdownPage navigate={navigate} />}

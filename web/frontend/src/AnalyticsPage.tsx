@@ -87,14 +87,13 @@ function PlatformDropdown({ value, disabled, onChange }: {
   };
 
   return <div className={`analytics-platform-select ${open ? 'is-open' : ''}`} ref={rootRef}>
-    <button
+    <button type="button"
       ref={triggerRef}
-      type="button"
       className="analytics-platform-trigger"
       role="combobox"
       aria-haspopup="listbox"
       aria-expanded={open}
-      aria-controls={menuId}
+      aria-controls={open ? menuId : undefined}
       aria-activedescendant={open ? `analytics-platform-option-${activeIndex}` : undefined}
       disabled={disabled}
       onClick={() => open ? setOpen(false) : openMenu()}
@@ -104,11 +103,10 @@ function PlatformDropdown({ value, disabled, onChange }: {
       <StudioIcon name="chevron-down" size={16} />
     </button>
     {open && <div id={menuId} className="analytics-platform-menu" role="listbox" aria-label="选择平台">
-      {platformOptions.map((option, index) => <button
+      {platformOptions.map((option, index) => <button type="button"
         id={`analytics-platform-option-${index}`}
         key={option.value}
         ref={node => { optionRefs.current[index] = node; }}
-        type="button"
         role="option"
         aria-selected={option.value === value}
         className={index === activeIndex ? 'is-active' : ''}
@@ -231,7 +229,7 @@ export function AnalyticsPage() {
   return <>
     <PageHeader title="账号分析" description="把各平台后台的表现数据放在同一处复盘。先看观察样本，再决定下一次内容实验。">
       <div className="analytics-header-actions">
-        <button className="secondary" disabled={busy} onClick={() => void readWechat()}>读取公众号后台数据</button>
+        <button type="button" className="secondary" disabled={busy} onClick={() => void readWechat()}>读取公众号后台数据</button>
         <span className="state">CSV/JSON 可用 · 真实读取需 浏览器连接方式</span>
       </div>
     </PageHeader>
@@ -252,7 +250,7 @@ export function AnalyticsPage() {
           <label className="analytics-wide">或粘贴数据<textarea rows={6} value={raw} onChange={event => setRaw(event.target.value)} placeholder={'CSV: title,pillar,阅读\n一次复盘,工程实践,1200\nJSON: [{"title":"一次复盘","pillar":"工程实践","阅读":1200}]'} disabled={busy} /></label>
         </div>
         <p className="analytics-field-help">每行至少提供 <code>title</code> 或 <code>content_ref</code>；其他列会原样保留为指标。缺失指标不会补成 0。</p>
-        <button className="primary" disabled={busy || !raw.trim()} onClick={() => void importRows()}>{busy ? '导入中…' : '导入并更新分析'}</button>
+        <button type="button" className="primary" disabled={busy || !raw.trim()} onClick={() => void importRows()}>{busy ? '导入中…' : '导入并更新分析'}</button>
       </section>
       <section className="analytics-card analytics-summary-card">
         <div className="analytics-section-heading"><div><span className="kicker">可解释摘要</span><h2>{summary?.observation_count ? `${summary.observation_count} 条观察` : '暂无数据'}</h2></div><span className="analytics-section-note">只比较账号自己的样本</span></div>

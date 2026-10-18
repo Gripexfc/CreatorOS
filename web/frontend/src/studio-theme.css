@@ -1617,14 +1617,14 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
   --faint: #718892;
   --line: #d9e7e7;
   --line-strong: #b8cecf;
-  --accent: #1ca8b7;
+  --accent: #0b7886;
   --accent-soft: #e3f4f3;
   --forest: #1c536d;
   --forest-deep: #16465b;
   --forest-soft: #e5f3f1;
   --green: #1c536d;
   --mint: #e5f3f1;
-  --gold: #c98d27;
+  --gold: #8a5b09;
   --radius-card: 16px;
   --radius-control: 10px;
   --shadow-card: 0 12px 30px rgba(34, 95, 109, .08);
@@ -1707,3 +1707,312 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
 .xhs-workbench-page .platform-picker button,
 .xhs-workbench-page .result-picker button { background: #ffffff; backdrop-filter: none; }
 .xhs-workbench-page .output-panel { background: #fbfdfc; }
+
+/* The workbench is wider than the rest of the shell on desktop. At tablet
+   widths its negative shell bleed must stop before it creates a horizontal
+   scrollbar, and its two-column editor must become one readable column. */
+@media (max-width: 1100px) {
+  .xhs-workbench-page { margin: -30px -24px -60px; padding: 30px 24px 60px; }
+  .xhs-workbench-page .composer-layout { grid-template-columns: 1fr; }
+  .xhs-workbench-page .output-panel { position: static; }
+}
+
+/* Touch targets are compact on desktop, but controls need a comfortable hit
+   area on phones. Keep the visible label scale while expanding the target. */
+@media (max-width: 720px) {
+  .studio-refactor .studio-brand { min-height: 44px; }
+  .studio-refactor .primary,
+  .studio-refactor .secondary,
+  .studio-refactor .quiet-button,
+  .studio-refactor .source-tabs button,
+  .studio-refactor .breakdown-source-tabs button,
+  .studio-refactor .theme-select-trigger,
+  .studio-refactor .analytics-platform-trigger,
+  .studio-refactor .model-select-trigger { min-height: 44px; }
+  .studio-refactor .studio-search-shell { min-height: 42px; }
+  .studio-refactor input:not([type='checkbox']):not([type='radio']),
+  .studio-refactor select { min-height: 44px; }
+  .studio-refactor .inspiration-strip .text-action,
+  .studio-refactor .discovery-row-bottom button { min-height: 44px; padding-inline: 8px; }
+}
+
+@media (max-width: 640px) {
+  .xhs-workbench-page { margin: -24px -16px -48px; padding: 24px 16px 48px; min-width: 0; }
+  .xhs-route-strip { overflow: visible; }
+  .xhs-route-strip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* Keep the mobile search usable instead of hiding its only focusable control. */
+@media (max-width: 760px) {
+  .studio-refactor .studio-breadcrumb span { display: none; }
+  .studio-refactor .studio-breadcrumb strong { max-width: 54px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .studio-refactor .studio-search-shell {
+    flex: 0 1 auto;
+    width: min(120px, calc(100vw - 216px));
+    min-width: 78px;
+  }
+  .studio-refactor .studio-search-shell input { display: block; width: 100%; min-width: 0; }
+}
+
+/* Collapse the text rail a little earlier so tablet editors keep a usable
+   measure instead of squeezing two columns into a narrow canvas. */
+@media (min-width: 721px) and (max-width: 820px) {
+  .studio-refactor .studio-sidebar { width: 64px; padding: 20px 8px; }
+  .studio-refactor .studio-brand { justify-content: center; padding: 0; }
+  .studio-refactor .studio-brand-copy,
+  .studio-refactor .studio-workspace,
+  .studio-refactor .studio-nav-heading,
+  .studio-refactor .studio-nav-label,
+  .studio-refactor .studio-nav-count,
+  .studio-refactor .sidebar-workflow,
+  .studio-refactor .studio-sidebar-bottom { display: none; }
+  .studio-refactor .studio-nav-icon { display: grid; }
+  .studio-refactor .studio-nav-primary,
+  .studio-refactor .studio-nav-utility { margin-top: 35px; }
+  .studio-refactor .studio-nav-item { justify-content: center; padding-inline: 8px; }
+  .studio-refactor .studio-body { width: calc(100% - 64px); margin-left: 64px; }
+}
+
+/* Keep every visible keyboard focus distinguishable, including large editors
+   whose older rules intentionally removed the browser outline. */
+.studio-refactor .output-editor:focus-visible,
+.studio-refactor .breakdown-result:focus-visible,
+.studio-refactor .adapted-result:focus-visible,
+.studio-refactor .profile-tag-input:focus-within,
+.studio-refactor .profile-choice-control:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Empty-state title candidates deserve the same hierarchy as the rest of the
+   editor instead of falling back to browser-default buttons. */
+.studio-refactor .xhs-title-candidates {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 14px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface-muted);
+}
+.studio-refactor .xhs-title-candidates > strong { color: var(--ink); font-size: 12px; }
+.studio-refactor .xhs-title-candidates > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.studio-refactor .xhs-title-candidates button {
+  min-height: 40px;
+  max-width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 12px;
+  text-align: left;
+}
+.studio-refactor .xhs-title-candidates button:hover,
+.studio-refactor .xhs-title-candidates button.selected {
+  color: var(--forest);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.studio-refactor .xhs-title-candidates small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.studio-refactor .discovery-row-title { display: block; color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.5; }
+.studio-refactor .profile-choice-menu button.is-active { color: var(--accent); background: var(--accent-soft); }
+.studio-refactor .creator-chat-status { min-height: 18px; color: var(--muted); font-size: 11px; }
+
+/* The small close buttons keep a compact visual but expose a touch-sized hit
+   area on phones. */
+@media (max-width: 720px) {
+  .studio-refactor .discovery-board-foot button,
+  .studio-refactor .feedback-buttons button,
+  .studio-refactor .profile-suggestion-row button { min-height: 44px; padding: 8px 10px; }
+  .studio-refactor .profile-tag button { width: 32px; height: 32px; padding: 7px; }
+  .studio-refactor .xhs-title-candidates button { min-height: 44px; }
+}
+
+@media (max-width: 480px) {
+  .studio-refactor .profile-setup-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .studio-refactor .profile-setup-flow i { display: none; }
+  .studio-refactor .profile-setup-flow span { min-width: 0; text-align: center; }
+  .studio-refactor .profile-section-title { align-items: flex-start; }
+  .studio-refactor .profile-section-title > span { margin-top: 4px; }
+  .studio-refactor .output-panel-head > div,
+  .studio-refactor .adapted-result-head > div,
+  .studio-refactor .model-config-heading > div { min-width: 0; }
+  .studio-refactor .output-panel-head h2,
+  .studio-refactor .adapted-result-head h3,
+  .studio-refactor .model-config-heading h2 { overflow-wrap: anywhere; }
+  .studio-refactor .output-panel-head .ready-state,
+  .studio-refactor .adapted-result-head .ready-state,
+  .studio-refactor .model-status { flex: 0 0 auto; white-space: normal; }
+}
+
+/* Dark mode surfaces for settings/profile feedback that previously inherited
+   the light legacy cards. */
+:root[data-theme='dark'] .studio-refactor .profile-default-section,
+:root[data-theme='dark'] .studio-refactor .profile-guide-note,
+:root[data-theme='dark'] .studio-refactor .model-feedback.success,
+:root[data-theme='dark'] .studio-refactor .model-feedback.warning,
+:root[data-theme='dark'] .studio-refactor .model-feedback.error {
+  color: var(--ink);
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+:root[data-theme='dark'] .studio-refactor .profile-default-section .profile-field input,
+:root[data-theme='dark'] .studio-refactor .profile-default-section .profile-tag-input { background: var(--control); }
+:root[data-theme='dark'] .studio-refactor .composer-workflow li.done b,
+:root[data-theme='dark'] .xhs-workbench-page .composer-workflow li.active b { color: #10201b; }
+:root[data-theme='dark'] .xhs-workbench-page .xhs-route-strip span { border-color: #334138; }
+:root[data-theme='dark'] .studio-refactor .analytics-date-input { color-scheme: dark; }
+
+/* The XHS editor has its own light creative canvas. Give it a complete dark
+   palette instead of letting light translucent layers leak into dark mode. */
+:root[data-theme='dark'] .xhs-workbench-page {
+  --xhs-ink: #edf1eb;
+  --xhs-muted: #aeb9af;
+  --xhs-quiet: #839087;
+  --xhs-bg: #111613;
+  --xhs-line: #334138;
+  --xhs-cyan: #72d4dc;
+  --xhs-blue: #8fb8f1;
+  --xhs-violet: #b5a9ee;
+  --xhs-coral: #f29c91;
+  --xhs-gold: #e5bd73;
+  --xhs-mint: #72d3b7;
+  --xhs-panel: #18211c;
+  --xhs-paper: #121a16;
+  --xhs-shadow: 0 24px 64px rgba(0, 0, 0, .28);
+  color: var(--xhs-ink);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(49, 126, 132, .18), transparent 31%),
+    radial-gradient(circle at 82% 24%, rgba(121, 76, 92, .16), transparent 31%),
+    linear-gradient(135deg, #12201d, #111613 52%, #171625);
+}
+:root[data-theme='dark'] .xhs-workbench-page::before {
+  opacity: .08;
+  background-image: radial-gradient(circle, #72d4dc 0 1px, transparent 1.3px);
+}
+:root[data-theme='dark'] .xhs-workbench-page .primary {
+  color: #10201b;
+  background: #a9d3b7;
+  border-color: #a9d3b7;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, .22);
+}
+:root[data-theme='dark'] .xhs-workbench-page .primary:hover {
+  color: #10201b;
+  background: #c1e3ca;
+  border-color: #c1e3ca;
+}
+:root[data-theme='dark'] .xhs-workbench-page .secondary,
+:root[data-theme='dark'] .xhs-workbench-page .quiet-button {
+  color: var(--xhs-ink);
+  background: #202a23;
+  border-color: #526356;
+}
+:root[data-theme='dark'] .xhs-workbench-page .secondary:hover,
+:root[data-theme='dark'] .xhs-workbench-page .quiet-button:hover {
+  color: var(--xhs-cyan);
+  background: #263a2d;
+  border-color: var(--xhs-cyan);
+}
+:root[data-theme='dark'] .xhs-workbench-page .profile-context-strip,
+:root[data-theme='dark'] .xhs-workbench-page .xhs-route-strip,
+:root[data-theme='dark'] .xhs-workbench-page .composer-panel,
+:root[data-theme='dark'] .xhs-workbench-page .output-panel,
+:root[data-theme='dark'] .xhs-workbench-page .platform-picker button,
+:root[data-theme='dark'] .xhs-workbench-page .result-picker button,
+:root[data-theme='dark'] .xhs-workbench-page .profile-consent,
+:root[data-theme='dark'] .xhs-workbench-page .debug-preference,
+:root[data-theme='dark'] .xhs-workbench-page .media-capability-note,
+:root[data-theme='dark'] .xhs-workbench-page .output-placeholder,
+:root[data-theme='dark'] .xhs-workbench-page .composer-workflow {
+  border-color: #334138;
+  background: #18211c;
+  box-shadow: var(--xhs-shadow);
+  backdrop-filter: none;
+}
+:root[data-theme='dark'] .xhs-workbench-page .profile-context-strip,
+:root[data-theme='dark'] .xhs-workbench-page .xhs-route-strip {
+  border-color: #3d5144;
+}
+:root[data-theme='dark'] .xhs-workbench-page .composer-label,
+:root[data-theme='dark'] .xhs-workbench-page .selection-summary,
+:root[data-theme='dark'] .xhs-workbench-page .truth-note {
+  color: var(--xhs-muted);
+}
+:root[data-theme='dark'] .xhs-workbench-page .composer-label input,
+:root[data-theme='dark'] .xhs-workbench-page .composer-label textarea,
+:root[data-theme='dark'] .xhs-workbench-page .advanced-skill select,
+:root[data-theme='dark'] .xhs-workbench-page .learning-feedback input,
+:root[data-theme='dark'] .xhs-workbench-page .output-editor {
+  color: var(--xhs-ink);
+  background: var(--xhs-paper);
+  border-color: #526356;
+}
+:root[data-theme='dark'] .xhs-workbench-page .platform-picker button,
+:root[data-theme='dark'] .xhs-workbench-page .result-picker button {
+  color: var(--xhs-muted);
+  background: #121a16;
+  border-color: #3d5144;
+}
+:root[data-theme='dark'] .xhs-workbench-page .platform-picker button:hover,
+:root[data-theme='dark'] .xhs-workbench-page .result-picker button:hover {
+  background: #202a23;
+  border-color: var(--xhs-cyan);
+}
+:root[data-theme='dark'] .xhs-workbench-page .platform-picker button.selected,
+:root[data-theme='dark'] .xhs-workbench-page .result-picker button.selected {
+  color: var(--xhs-cyan);
+  background: #263a2d;
+  border-color: var(--xhs-cyan);
+}
+:root[data-theme='dark'] .xhs-workbench-page.xhs-selected .platform-picker button.selected {
+  color: var(--xhs-coral);
+  background: #3a292a;
+  border-color: var(--xhs-coral);
+}
+:root[data-theme='dark'] .xhs-workbench-page .output-panel {
+  background: #141c17;
+  border-top-color: var(--xhs-cyan);
+}
+:root[data-theme='dark'] .xhs-workbench-page .output-placeholder {
+  background: #121a16;
+  border-color: #526356;
+}
+:root[data-theme='dark'] .xhs-workbench-page .learning-feedback {
+  border-color: #665338;
+  background: #2a251c;
+}
+:root[data-theme='dark'] .xhs-workbench-page .quality-review {
+  border-color: #334138;
+  border-left-color: var(--xhs-gold);
+  background: #24231c;
+}
+:root[data-theme='dark'] .xhs-workbench-page .composer-workflow {
+  border-left-color: var(--xhs-cyan);
+}
+:root[data-theme='dark'] .xhs-workbench-page .composer-workflow li {
+  border-color: #334138;
+  color: var(--xhs-quiet);
+  background: #202a23;
+}
+:root[data-theme='dark'] .xhs-workbench-page .composer-workflow li.active {
+  border-color: #6f9e85;
+  color: var(--xhs-ink);
+  background: #263a2d;
+}
+:root[data-theme='dark'] .xhs-workbench-page .composer-workflow li.done {
+  border-color: #3c6652;
+  background: #202f27;
+}
+:root[data-theme='dark'] .xhs-workbench-page .composer-workflow li.blocked {
+  border-color: #6b4c3e;
+  background: #3a2a22;
+}
+:root[data-theme='dark'] .xhs-workbench-page .xhs-route-strip span:not(:last-child)::after {
+  background: #526356;
+}
+:root[data-theme='dark'] .xhs-workbench-page .xhs-route-strip i { background: #526356; }
+:root[data-theme='dark'] .xhs-workbench-page .xhs-route-strip span.done i { background: var(--xhs-mint); }
+:root[data-theme='dark'] .xhs-workbench-page .xhs-route-strip span.active i { background: var(--xhs-cyan); }

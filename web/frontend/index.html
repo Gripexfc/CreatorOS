@@ -3,29 +3,38 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/brand/zixu-mark.svg?v=2" />
-    <meta name="application-name" content="知序" />
+    <script>
+      try {
+        const savedTheme = localStorage.getItem('creatoros:theme');
+        document.documentElement.dataset.theme = savedTheme === 'dark' ? 'dark' : 'light';
+      } catch {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/brand/zixu-mark.svg?v=4" />
+    <meta name="application-name" content="知序创作台" />
     <meta name="description" content="知序是本地优先的内容创作工作台，帮助个人创作者从热点发现、选题研究、资料整理到公众号、小红书和抖音草稿编辑，保留来源、版本和人工核验状态，并在接入真实模型或平台账号前清楚显示能力边界；所有真实连接、生成和发布动作都由用户明确触发，未连接时不会把模板或演示结果标成真实成功；账号、密钥和发布动作始终由用户掌控。" />
     <meta name="robots" content="index,follow" />
     <link rel="canonical" href="https://example.invalid/" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="知序" />
+    <meta property="og:site_name" content="知序创作台" />
     <meta property="og:title" content="知序｜本地优先的热点研究、内容创作、多平台草稿与发布前检查工作台及真实能力边界" />
     <meta property="og:description" content="从热点研究、选题整理到多平台草稿和发布前检查，知序保留来源、版本与人工核验状态，并明确区分真实连接、模板结果和待验证能力。" />
     <meta property="og:url" content="https://example.invalid/" />
-    <meta property="og:image" content="/brand/zixu-mark.svg?v=2" />
+    <meta property="og:image" content="/brand/zixu-mark.svg?v=4" />
     <meta property="og:image:alt" content="知序品牌标记" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="知序｜本地优先的热点研究、内容创作、多平台草稿与发布前检查工作台及真实能力边界" />
     <meta name="twitter:description" content="从热点研究、选题整理到多平台草稿和发布前检查，知序把本地创作流程放在一个清楚的工作台里。" />
-    <meta name="twitter:image" content="/brand/zixu-mark.svg?v=2" />
+    <meta name="twitter:image" content="/brand/zixu-mark.svg?v=4" />
     <title>知序｜本地优先的热点研究、内容创作、多平台草稿与发布前检查工作台及真实能力边界</title>
+    <style>#static-shell h1{font-size:clamp(2.25rem,5vw,3.5rem);line-height:1.1}#static-shell h2{font-size:1.5rem;line-height:1.25}</style>
   </head>
   <body>
     <div id="root">
       <main id="static-shell" aria-label="知序内容工作台">
         <article itemscope itemtype="https://schema.org/Article">
-          <p class="byline">作者：<a rel="author" href="/about.html" itemprop="author">CreatorOS 团队</a> · <time datetime="2026-10-18" itemprop="datePublished">更新于 2026-10-18</time></p>
+          <p class="byline">作者：<a rel="author" href="/about.html" itemprop="author">知序创作台团队</a> · <time datetime="2026-10-18" itemprop="datePublished">更新于 2026-10-18</time></p>
           <h1>知序内容工作台</h1>
           <p>本地优先的内容创作工作台，支持热点研究、内容整理、多平台草稿和发布前检查。</p>
           <a href="#/hotspots">进入工作台</a>

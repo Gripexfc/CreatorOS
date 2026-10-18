@@ -49,6 +49,7 @@ function SingleChoiceField({ id, label, hint, value, placeholder, choices, onCha
   id: string; label: string; hint?: string; value: string; placeholder: string; choices: string[]; onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return undefined;
@@ -61,19 +62,29 @@ function SingleChoiceField({ id, label, hint, value, placeholder, choices, onCha
   const query = value.trim().toLocaleLowerCase();
   const matchingChoices = choices.filter(choice => !query || choice.toLocaleLowerCase().includes(query));
   const visibleChoices = matchingChoices.length ? matchingChoices : choices;
+  const menuId = `${id}-choices`;
+  useEffect(() => { if (open) setActiveIndex(index => Math.min(index, Math.max(visibleChoices.length - 1, 0))); }, [open, visibleChoices.length]);
   return <div className="profile-field profile-choice-field">
     <label htmlFor={id}>{label}{hint && <small>{hint}</small>}</label>
     <div className="profile-choice-control" ref={rootRef} onBlur={event => {
       const next = event.relatedTarget as Node | null;
       if (!next || !rootRef.current?.contains(next)) setOpen(false);
     }}>
-      <input id={id} value={value} onChange={event => onChange(event.target.value)} onFocus={() => choices.length && setOpen(true)} onClick={() => choices.length && setOpen(true)} onKeyDown={event => {
-        if (event.key === 'Escape') setOpen(false);
-        if (event.key === 'ArrowDown' && choices.length) { event.preventDefault(); setOpen(true); }
-        if (event.key === 'Enter' && open && visibleChoices.length === 1) { event.preventDefault(); onChange(visibleChoices[0]); setOpen(false); }
-      }} placeholder={placeholder} aria-autocomplete={choices.length ? 'list' : undefined} aria-expanded={choices.length ? open : undefined} aria-haspopup={choices.length ? 'listbox' : undefined} />
-      {choices.length > 0 && <button type="button" className="profile-choice-toggle" aria-label={`展开${label}建议`} aria-expanded={open} onMouseDown={event => event.preventDefault()} onClick={() => setOpen(current => !current)}><StudioIcon name="chevron-down" size={14} /></button>}
-      {choices.length > 0 && open && <div className="profile-choice-menu" role="listbox" aria-label={`${label}常用选项`}>{visibleChoices.map(choice => <button type="button" role="option" aria-selected={value === choice} key={choice} onMouseDown={event => event.preventDefault()} onClick={() => { onChange(choice); setOpen(false); }}>{choice}</button>)}</div>}
+      <input id={id} value={value} onChange={event => { onChange(event.target.value); setActiveIndex(0); }} onFocus={() => choices.length && setOpen(true)} onClick={() => choices.length && setOpen(true)} onKeyDown={event => {
+        if (event.key === 'Escape') { setOpen(false); return; }
+        if (!choices.length) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          if (!open) { setOpen(true); setActiveIndex(event.key === 'ArrowDown' ? 0 : Math.max(visibleChoices.length - 1, 0)); }
+          else setActiveIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + visibleChoices.length) % visibleChoices.length);
+          return;
+        }
+        if (event.key === 'Home' && open) { event.preventDefault(); setActiveIndex(0); return; }
+        if (event.key === 'End' && open) { event.preventDefault(); setActiveIndex(Math.max(visibleChoices.length - 1, 0)); return; }
+        if (event.key === 'Enter' && open && visibleChoices.length) { event.preventDefault(); onChange(visibleChoices[activeIndex] || visibleChoices[0]); setOpen(false); }
+      }} placeholder={placeholder} role={choices.length ? 'combobox' : undefined} aria-autocomplete={choices.length ? 'list' : undefined} aria-expanded={choices.length ? open : undefined} aria-haspopup={choices.length ? 'listbox' : undefined} aria-controls={open ? menuId : undefined} aria-activedescendant={open && visibleChoices.length ? `${menuId}-${activeIndex}` : undefined} />
+      {choices.length > 0 && <button type="button" className="profile-choice-toggle" aria-label={`展开${label}建议`} aria-expanded={open} aria-controls={open ? menuId : undefined} onMouseDown={event => event.preventDefault()} onClick={() => setOpen(current => !current)}><StudioIcon name="chevron-down" size={14} /></button>}
+      {choices.length > 0 && open && <div id={menuId} className="profile-choice-menu" role="listbox" aria-label={`${label}常用选项`}>{visibleChoices.map((choice, index) => <button type="button" id={`${menuId}-${index}`} role="option" aria-selected={value === choice} className={index === activeIndex ? 'is-active' : ''} key={choice} onMouseDown={event => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onChange(choice); setActiveIndex(index); setOpen(false); }}>{choice}</button>)}</div>}
     </div>
   </div>;
 }
@@ -155,7 +166,7 @@ export function StudioProfilePage({ navigate }: { navigate: (path: string) => vo
   return <>
     <div className="studio-page-heading profile-heading">
       <div><h1>个人画像</h1><p>告诉知序你的经历、边界和表达习惯，后续生成可按这套偏好来写。</p></div>
-      <div className="profile-heading-actions"><button className="quiet-button" onClick={() => navigate('create')}><StudioIcon name="pen" size={16} />进入内容工作区</button></div>
+      <div className="profile-heading-actions"><button type="button" className="quiet-button" onClick={() => navigate('create')}><StudioIcon name="pen" size={16} />进入内容工作区</button></div>
     </div>
     {notice && <Message>{notice}</Message>}{error && <Message error>{error}</Message>}
     <div className="profile-overview-strip" aria-label="写作偏好状态">
@@ -180,9 +191,9 @@ export function StudioProfilePage({ navigate }: { navigate: (path: string) => vo
         </section>
         <section className="profile-platform-section"><div className="profile-section-title"><div><h3>按平台调整</h3><p>只填写真正不同的地方；每张卡片底部会显示最终生效的规则。</p></div><span>可选覆盖</span></div><div className="profile-platforms">{platformKeys.map(platform => <PlatformProfileCard key={platform} platform={platform} profile={snapshot} onChange={value => setPlatform(platform, value)} onReset={() => setPlatform(platform, emptyPlatform())} />)}</div></section>
         <section className="profile-evidence-section"><div className="profile-section-title"><div><h3>留下可引用的素材</h3><p>只写你愿意公开使用的经历、案例、数据或截图位置。</p></div><span>证据范围</span></div><div className="profile-field"><label htmlFor="profile-evidence">真实经历、案例、数据</label><textarea id="profile-evidence" rows={3} value={snapshot.evidence_refs.join('\n')} onChange={event => setSnapshotValue({ evidence_refs: event.target.value.split('\n').map(value => value.trim()).filter(Boolean) })} placeholder="一行一条，例如：2026 年 9 月，完成一次本地内容工作流改造，可公开分享过程和结果。" /></div></section>
-        <div className="profile-save-row"><span>{dirty ? '有未保存的修改' : '当前写作偏好已同步'}<small>保存会创建一个新的可回看的写作偏好版本。</small></span><button className="primary" disabled={!dirty || busy} onClick={() => void save()}>{busy ? '正在保存…' : '保存这套写作偏好'}</button></div>
+        <div className="profile-save-row"><span>{dirty ? '有未保存的修改' : '当前写作偏好已同步'}<small>保存会创建一个新的可回看的写作偏好版本。</small></span><button type="button" className="primary" disabled={!dirty || busy} onClick={() => void save()}>{busy ? '正在保存…' : '保存这套写作偏好'}</button></div>
       </section>
-      <aside className="profile-guide-card"><div className="guide-mark"><StudioIcon name="spark" size={22} /></div><h2>设置时只需要记住三件事</h2><ol><li><strong>共用规则管方向</strong><span>定位、语气和格式是所有平台的默认起点，适合先把运营标准定下来。</span></li><li><strong>平台卡片只写差异</strong><span>公众号可以更完整，小红书更适合清单，抖音更看重开场和口播。</span></li><li><strong>留空也没关系</strong><span>没有单独设置的平台字段会继承共用配置；之后想调整，改完再保存一个新版本即可。</span></li></ol><div className="profile-guide-note"><strong>保存后会发生什么？</strong><span>下一次创作会引用当前版本。历史版本仍然保留，方便你比较和恢复。</span></div><button className="secondary" onClick={() => navigate('create')}>去生成一篇试试<StudioIcon name="arrow" size={15} /></button></aside>
+      <aside className="profile-guide-card"><div className="guide-mark"><StudioIcon name="spark" size={22} /></div><h2>设置时只需要记住三件事</h2><ol><li><strong>共用规则管方向</strong><span>定位、语气和格式是所有平台的默认起点，适合先把运营标准定下来。</span></li><li><strong>平台卡片只写差异</strong><span>公众号可以更完整，小红书更适合清单，抖音更看重开场和口播。</span></li><li><strong>留空也没关系</strong><span>没有单独设置的平台字段会继承共用配置；之后想调整，改完再保存一个新版本即可。</span></li></ol><div className="profile-guide-note"><strong>保存后会发生什么？</strong><span>下一次创作会引用当前版本。历史版本仍然保留，方便你比较和恢复。</span></div><button type="button" className="secondary" onClick={() => navigate('create')}>去生成一篇试试<StudioIcon name="arrow" size={15} /></button></aside>
     </div>
   </>;
 }

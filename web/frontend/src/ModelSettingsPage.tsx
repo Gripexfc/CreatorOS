@@ -105,14 +105,14 @@ const modelErrorText = (error: unknown, action: ModelAction) => {
 const modelTestDetail = (detail: string) => {
   const value = detail.toLowerCase();
   if (/(arrearage|overdue|欠费|账户状态)/.test(value)) return '模型账户欠费或状态异常，请到服务商控制台处理欠费并开启可用额度后重试。';
-  if (/(401|403)/.test(value)) return 'API Key 无效或没有权限，请检查是否过期、复制不完整，或已被撤销。';
-  if (/(402|billing|insufficient balance|insufficient credit|余额不足|额度)/.test(value)) return '模型账户余额或额度不足，请到服务商控制台充值，或更换可用 API Key。';
+  if (/(401|403)/.test(value)) return '访问密钥无效或没有权限，请检查是否过期、复制不完整，或已被撤销。';
+  if (/(402|billing|insufficient balance|insufficient credit|余额不足|额度)/.test(value)) return '模型账户余额或额度不足，请到服务商控制台充值，或更换可用 访问密钥。';
   if (/404/.test(value)) return '服务地址可以访问，但接口地址不对，请检查服务地址。';
-  if (/400/.test(value)) return '模型请求未被服务商接受，可能是模型尚未开启或模型 ID 不正确；请到服务商控制台启用模型后重试。';
+  if (/400/.test(value)) return '模型请求未被服务商接受，可能是模型尚未开启或模型编号不正确；请到服务商控制台启用模型后重试。';
   if (/429/.test(value)) return '请求过于频繁或额度不足，请稍后重试。';
   if (/(500|502|503|504)/.test(value)) return '服务商暂时不可用，请稍后重试。';
   if (/(timeout|timed out|urlopen error|network|connection|name or service)/.test(value)) return '无法连接服务商，请检查网络和服务地址。';
-  return '服务未返回成功，请检查服务地址和 API Key。';
+  return '服务未返回成功，请检查服务地址和 访问密钥。';
 };
 
 type ModelDropdownOption = { value: string; label: string; description?: string };
@@ -206,10 +206,9 @@ function ModelDropdown({ id, value, options, disabled, onChange }: {
   };
 
   return <div className={`model-select ${open ? 'is-open' : ''}`} ref={rootRef}>
-    <button
+    <button type="button"
       ref={triggerRef}
       id={id}
-      type="button"
       className="model-select-trigger"
       role="combobox"
       aria-haspopup="listbox"
@@ -227,11 +226,10 @@ function ModelDropdown({ id, value, options, disabled, onChange }: {
       <StudioIcon name="chevron-down" size={16} />
     </button>
     {open && <div id={menuId} className="model-select-menu" role="listbox" aria-labelledby={id}>
-      {options.map((option, index) => <button
+      {options.map((option, index) => <button type="button"
         id={`${id}-option-${index}`}
         key={`${option.value}-${index}`}
         ref={node => { optionRefs.current[index] = node; }}
-        type="button"
         role="option"
         aria-selected={option.value === value}
         className={index === activeIndex ? 'is-active' : ''}
@@ -329,7 +327,7 @@ export function ModelSettingsPage() {
     if (!requestedBase) {
       if (requestId === discoveryRequestRef.current) {
         setDiscoveredModels([]);
-        setDiscoveryDetail('暂未读取到模型列表，可手填模型 ID。');
+        setDiscoveryDetail('暂未读取到模型列表，可手填模型编号。');
         setDiscoveringModels(false);
       }
       return;
@@ -339,7 +337,7 @@ export function ModelSettingsPage() {
     if (!requestedKey && row?.keyMasked && normalizeBaseUrl(requestedBase) !== normalizeBaseUrl(storedBase)) {
       if (requestId === discoveryRequestRef.current) {
         setDiscoveredModels([]);
-        setDiscoveryDetail('服务地址已变化，请先填写新的 API Key 才能读取模型。');
+        setDiscoveryDetail('服务地址已变化，请先填写新的访问密钥才能读取模型。');
         setDiscoveringModels(false);
       }
       return;
@@ -357,12 +355,12 @@ export function ModelSettingsPage() {
       setDiscoveredModels(remoteModels);
       setDiscoveryDetail(response.available && remoteModels.length
         ? `已读取 ${remoteModels.length} 个可用模型。`
-        : response.detail || '暂未读取到模型列表，可手填模型 ID。');
+        : response.detail || '暂未读取到模型列表，可手填模型编号。');
     } catch (e) {
       if (requestId !== discoveryRequestRef.current) return;
       setDiscoveredModels([]);
       if (e instanceof DOMException && e.name === 'AbortError') return;
-      setDiscoveryDetail(e instanceof ApiError ? e.message : '暂未读取到模型列表，可手填模型 ID。');
+      setDiscoveryDetail(e instanceof ApiError ? e.message : '暂未读取到模型列表，可手填模型编号。');
     } finally {
       if (requestId === discoveryRequestRef.current) setDiscoveringModels(false);
     }
@@ -474,11 +472,11 @@ export function ModelSettingsPage() {
       return false;
     }
     if (needsKey) {
-      setError(endpointChanged ? '服务地址已变化，请重新填写 API Key。' : '首次配置需要填写 API Key。');
+      setError(endpointChanged ? '服务地址已变化，请重新填写 访问密钥。' : '首次配置需要填写 访问密钥。');
       return false;
     }
     if (/https?:\/\//i.test(key.trim())) {
-      setError('API Key 看起来包含服务地址，请只粘贴密钥本身。');
+      setError('访问密钥看起来包含服务地址，请只粘贴密钥本身。');
       return false;
     }
 
@@ -512,7 +510,7 @@ export function ModelSettingsPage() {
       const gatewayHint = nextGateway?.gatewayOnline
         ? '模型服务已运行，但还没完成验证；请点击“保存并测试”。'
         : nextGateway
-          ? '配置已保存，但本地创作服务还没启动；请先安装或启动 OpenClaw，再点击“保存并测试”。'
+          ? '配置已保存，但本地创作服务还没启动；请先启动本地模型服务，再点击“保存并测试”。'
           : '配置已保存，但暂时读不到本地创作服务状态；请点击“重新读取”后再试。';
       setNotice(`${preset.label} 配置已保存。${gatewayHint}${response.note ? ` ${response.note}` : ''}`);
       return true;
@@ -535,14 +533,14 @@ export function ModelSettingsPage() {
       const nextGateway = await getModelGatewayStatus().catch(() => gateway);
       setGateway(nextGateway);
       const gatewayHint = nextGateway
-        ? (nextGateway.gatewayOnline ? '' : '本地创作服务还没启动，请先安装或启动 OpenClaw 后再开始创作。')
+        ? (nextGateway.gatewayOnline ? '' : '本地创作服务还没启动，请先启动本地模型服务后再开始创作。')
         : '暂时读不到本地创作服务状态，请点击“重新读取”后再试。';
       if (!response.results.length) {
-        setNotice('配置已保存，但暂时没有可检查的模型。请确认 API Key 后再试。');
+        setNotice('配置已保存，但暂时没有可检查的模型。请确认 访问密钥后再试。');
       } else if (response.results.every(result => result.ok)) {
           setNotice(gatewayHint
             ? `模型接口测试通过，但${gatewayHint}`
-            : '模型测试通过：服务地址、API Key、模型权限和账户额度均已完成一次最小生成验证。');
+            : '模型测试通过：服务地址、访问密钥、模型权限和账户额度均已完成一次最小生成验证。');
       } else {
         // save() 之后 rows 可能要等下一次渲染才更新，因此这里同时把本次表单
         // 地址视为主模型地址，避免刚保存的主模型被误判成备份。
@@ -600,7 +598,7 @@ export function ModelSettingsPage() {
     || (!current && (model.trim() || baseUrl.trim() || key.trim() || name.trim())),
   );
   // The upstream probe talks to the provider directly. Content creation still
-  // goes through CreatorOS's local OpenClaw gateway, so both checks are needed
+  // goes through CreatorOS's local 本地模型服务 gateway, so both checks are needed
   // before the page can claim that creation is ready.
   const upstreamVerifiedPrimary = primaryPassed && !hasUnsavedChanges;
   const gatewayReady = gateway?.gatewayOnline === true;
@@ -644,22 +642,22 @@ export function ModelSettingsPage() {
           ? '配置已保存，模型服务还没启动'
           : '先配置并测试模型';
   const gatewayDescription = hasUnsavedChanges
-    ? '你改动了服务地址、模型或 API Key；保存并测试后，新的配置才会被验证。'
+    ? '你改动了服务地址、模型或 访问密钥；保存并测试后，新的配置才会被验证。'
     : verifiedPrimary
     ? partialBackupFailure
       ? `主模型已经通过一次最小生成测试，可以开始创作；${backupResults.filter(result => !result.ok).length} 个备用模型检查失败，可稍后处理。`
       : '主模型已经通过一次最小生成测试，可以开始创作。你可以回到研究参考内容或开始创作。'
     : gatewayBlockedAfterTest
-      ? '模型服务商的地址、API Key、模型权限和账户额度已经通过最小生成测试，但 CreatorOS 本地网关还没有启动。请安装或启动 OpenClaw 后，再点击“保存并测试”。'
+      ? '模型服务商的地址、访问密钥、模型权限和账户额度已经通过最小生成测试，但 CreatorOS 本地网关还没有启动。请先启动本地模型服务后，再点击“保存并测试”。'
       : gatewayUnknownAfterTest
         ? '模型服务商的最小生成测试已经通过，但暂时读不到 CreatorOS 本地网关状态。请点击“重新读取”后再试。'
     : testFailed
-      ? '主模型测试没有通过；请按下方结果处理服务地址、API Key、模型编号或账户额度。'
+      ? '主模型测试没有通过；请按下方结果处理服务地址、访问密钥、模型编号或账户额度。'
       : gateway?.gatewayOnline
-        ? '模型服务已经运行，但还没有验证能否生成内容。点击“保存并测试”，检查 API Key、模型权限和账户额度。'
+        ? '模型服务已经运行，但还没有验证能否生成内容。点击“保存并测试”，检查 访问密钥、模型权限和账户额度。'
         : gateway?.configured
           ? '配置已经保存，但模型服务还没启动；启动后点击“保存并测试”。'
-          : '先选择模型服务商、模型并填写 API Key，再点击“保存并测试”。';
+          : '先选择模型服务商、模型并填写 访问密钥，再点击“保存并测试”。';
   const modelOptions = model && !modelIsKnown ? [model, ...availableModels] : availableModels;
   const feedbackState = hasUnsavedChanges
     ? 'warning'
@@ -721,7 +719,7 @@ export function ModelSettingsPage() {
                 value={modelIsKnown ? model : CUSTOM_MODEL_VALUE}
                 options={[
                   ...modelOptions.map(item => ({ value: item, label: item })),
-                  { value: CUSTOM_MODEL_VALUE, label: model && !modelIsKnown ? `当前配置 · ${model}` : '其他模型 ID…', description: model && !modelIsKnown ? '编辑下方的模型 ID' : '粘贴服务商提供的模型 ID' },
+                  { value: CUSTOM_MODEL_VALUE, label: model && !modelIsKnown ? `当前配置 · ${model}` : '其他模型编号…', description: model && !modelIsKnown ? '编辑下方的模型编号' : '粘贴服务商提供的模型编号' },
                 ]}
                 onChange={value => {
           const nextModel = value === CUSTOM_MODEL_VALUE ? '' : value;
@@ -735,7 +733,7 @@ export function ModelSettingsPage() {
                 const nextModel = event.target.value;
                 rememberDraft(providerId, { model: nextModel, baseUrl, key, name, primary });
                 setModel(nextModel);
-              }} placeholder="粘贴服务商提供的模型名称或编号" autoComplete="off" disabled={loading || saving || testing} aria-label="手动输入模型 ID" />}
+              }} placeholder="粘贴服务商提供的模型名称或编号" autoComplete="off" disabled={loading || saving || testing} aria-label="手动输入模型编号" />}
             </div>
 
             <div className="model-field model-key-field">
@@ -745,7 +743,7 @@ export function ModelSettingsPage() {
                 rememberDraft(providerId, { model, baseUrl, key: nextKey, name, primary });
                 setClearKey(false);
                 setKey(nextKey);
-              }} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴 API Key'} autoComplete="new-password" disabled={loading || saving || testing} />
+              }} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴 访问密钥'} autoComplete="new-password" disabled={loading || saving || testing} />
             </div>
           </div>
 
@@ -753,7 +751,7 @@ export function ModelSettingsPage() {
             <div className="model-advanced-heading">
               <div>
                 <h3 id="model-endpoint-title">服务地址</h3>
-                <p>兼容接口需要填写；更换地址后请重新填写 API Key。</p>
+                <p>兼容接口需要填写；更换地址后请重新填写 访问密钥。</p>
               </div>
               <span className="model-section-badge">连接入口</span>
             </div>
@@ -778,9 +776,9 @@ export function ModelSettingsPage() {
           </section>
 
           <div className="model-action-row">
-            <button className="primary" disabled={loading || saving || testing || !hydrated} onClick={() => void saveAndTest()}>{saving ? '保存中…' : testing ? '检查中…' : '保存并测试'}</button>
-            <button className="secondary" disabled={loading || saving || testing || !hydrated} onClick={() => void save()}>只保存</button>
-            <button className="quiet-button" disabled={loading || saving || testing} onClick={() => void load()}>重新读取</button>
+            <button type="button" className="primary" disabled={loading || saving || testing || !hydrated} onClick={() => void saveAndTest()}>{saving ? '保存中…' : testing ? '检查中…' : '保存并测试'}</button>
+            <button type="button" className="secondary" disabled={loading || saving || testing || !hydrated} onClick={() => void save()}>只保存</button>
+            <button type="button" className="quiet-button" disabled={loading || saving || testing} onClick={() => void load()}>重新读取</button>
           </div>
           {!!testResults.length && <div className="model-test-results" aria-live="polite">{testResults.map((result) => {
             const primaryResult = isPrimaryResult(result);
@@ -872,10 +870,10 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
   };
   const save = async (): Promise<boolean> => {
     if (!slot) { setError('请先选择媒体服务商。'); return false; }
-    if (channel === 'image' && !model.trim()) { setError('生图必须填写图片模型 ID，不能沿用聊天模型。'); return false; }
+    if (channel === 'image' && !model.trim()) { setError('生图必须填写图片模型编号，不能沿用聊天模型。'); return false; }
     if (channel === 'image' && !baseUrl.trim()) { setError('生图必须填写 API 根地址，不能沿用聊天模型地址。'); return false; }
     if (channel === 'video' && !current?.baseOptional && !baseUrl.trim()) { setError('该视频服务商需要填写 API 根地址。'); return false; }
-    if (!key.trim() && !clearKey && !current?.keyMasked) { setError('首次配置需要填写 API Key。'); return false; }
+    if (!key.trim() && !clearKey && !current?.keyMasked) { setError('首次配置需要填写 访问密钥。'); return false; }
     setSaving(true); setError(''); setNotice(''); setTestResult(null);
     try {
       const response = await saveModelConfig([{ slot, model: model.trim(), baseUrl: baseUrl.trim(), key: key.trim(), key2: key2.trim(), primary, clearKey, clearKey2 }], channel);
@@ -919,13 +917,13 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
     {!!rows.length && <>
       <div className="model-fields media-model-fields">
         <div className="model-field"><div className="model-field-label"><label htmlFor={`${channel}-provider`}>服务商</label><small>与聊天模型分开保存</small></div><ModelDropdown id={`${channel}-provider`} value={slot} options={rows.map(row => ({ value: row.slot || '', label: row.name || row.slot || '未命名服务商', description: row.sub || (row.baseOptional ? '可使用默认地址' : '需要服务地址') }))} onChange={selectSlot} disabled={saving || testing} /></div>
-        <label className="model-field"><span className="model-field-label"><span>模型</span><small>{current?.modelEditable === false ? '由服务商默认' : '服务商提供的模型 ID'}</small></span><input value={model} onChange={e => setModel(e.target.value)} placeholder={current?.modelEditable === false ? '服务商默认模型' : '填写模型 ID'} disabled={saving || testing || current?.modelEditable === false} /></label>
+        <label className="model-field"><span className="model-field-label"><span>模型</span><small>{current?.modelEditable === false ? '由服务商默认' : '服务商提供的模型编号'}</small></span><input value={model} onChange={e => setModel(e.target.value)} placeholder={current?.modelEditable === false ? '服务商默认模型' : '填写模型编号'} disabled={saving || testing || current?.modelEditable === false} /></label>
         <label className="model-field"><span className="model-field-label"><span>服务地址</span><small>{current?.baseOptional ? '可留空使用默认地址' : '更换地址时必须重填 Key'}</small></span><input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder={current?.baseOptional ? '留空使用默认地址' : 'https://api.example.com/v1'} disabled={saving || testing || current?.baseEditable === false} /></label>
-        <label className="model-field model-key-field"><span className="model-field-label"><span>API Key</span><span className="model-key-meta">{current?.keyMasked && <small>{clearKey ? '保存时会移除已保存密钥' : `已保存 ${current.keyMasked}，留空沿用`}</small>}{current?.keyMasked && <button type="button" className="model-key-clear" onClick={() => { setClearKey(value => !value); setKey(''); }} disabled={saving || testing}>{clearKey ? '撤销清除' : '清除密钥'}</button>}{!current?.keyMasked && <small>只在本机保存，不显示明文</small>}</span></span><input type="password" value={key} onChange={e => { setClearKey(false); setKey(e.target.value); }} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴服务商提供的 Key'} autoComplete="new-password" disabled={saving || testing} /></label>
+        <label className="model-field model-key-field"><span className="model-field-label"><span>访问密钥</span><span className="model-key-meta">{current?.keyMasked && <small>{clearKey ? '保存时会移除已保存密钥' : `已保存 ${current.keyMasked}，留空沿用`}</small>}{current?.keyMasked && <button type="button" className="model-key-clear" onClick={() => { setClearKey(value => !value); setKey(''); }} disabled={saving || testing}>{clearKey ? '撤销清除' : '清除密钥'}</button>}{!current?.keyMasked && <small>只在本机保存，不显示明文</small>}</span></span><input type="password" value={key} onChange={e => { setClearKey(false); setKey(e.target.value); }} placeholder={current?.keyMasked ? '已配置，留空表示沿用' : '粘贴服务商提供的 Key'} autoComplete="new-password" disabled={saving || testing} /></label>
         {!!current?.key2Label && <label className="model-field model-key-field"><span className="model-field-label"><span>{current.key2Label}</span><span className="model-key-meta">{current.key2Masked && <small>{clearKey2 ? '保存时会移除已保存密钥' : `已保存 ${current.key2Masked}，留空沿用`}</small>}{current.key2Masked && <button type="button" className="model-key-clear" onClick={() => { setClearKey2(value => !value); setKey2(''); }} disabled={saving || testing}>{clearKey2 ? '撤销清除' : '清除密钥'}</button>}{!current.key2Masked && <small>部分服务商需要第二项密钥</small>}</span></span><input type="password" value={key2} onChange={e => { setClearKey2(false); setKey2(e.target.value); }} placeholder={current.key2Masked ? '已配置，留空表示沿用' : '粘贴第二项密钥'} autoComplete="new-password" disabled={saving || testing} /></label>}
       </div>
       <label className="model-primary-toggle media-primary-toggle"><input type="checkbox" checked={primary} onChange={e => setPrimary(e.target.checked)} disabled={saving || testing} /><span><strong>设为该媒体通道的默认服务商</strong><small>生成时优先使用这一家，其他服务商保留为备用。</small></span></label>
-      <div className="model-action-row"><button className="primary" onClick={() => void save()} disabled={loading || saving || testing}>{saving ? '保存中…' : '保存配置'}</button><button className="secondary" onClick={() => void test()} disabled={loading || saving || testing}>{testing ? '检查中…' : '保存并检查'}</button><button className="quiet-button" onClick={() => void load()} disabled={loading || saving || testing}>重新读取</button></div>
+      <div className="model-action-row"><button type="button" className="primary" onClick={() => void save()} disabled={loading || saving || testing}>{saving ? '保存中…' : '保存配置'}</button><button type="button" className="secondary" onClick={() => void test()} disabled={loading || saving || testing}>{testing ? '检查中…' : '保存并检查'}</button><button type="button" className="quiet-button" onClick={() => void load()} disabled={loading || saving || testing}>重新读取</button></div>
       {testResult && <div className="model-test-results"><div><strong className={testResult.ok ? 'model-test-ok' : 'model-test-fail'}>{testResult.ok ? '配置前置检查通过' : '配置前置检查失败'}</strong><span>{testResult.baseUrl}</span><small>{testResult.detail}</small></div></div>}
     </>}
   </section>;

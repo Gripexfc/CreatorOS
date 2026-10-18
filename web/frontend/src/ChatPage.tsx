@@ -7,10 +7,12 @@ type Message = { role: 'user' | 'assistant'; content: string; blocked?: boolean 
 
 function sessionId(): string {
   const key = 'creatoros:chat-session';
-  const old = window.localStorage.getItem(key);
-  if (old) return old;
+  try {
+    const old = window.localStorage.getItem(key);
+    if (old) return old;
+  } catch { /* Private browsing may disable storage. */ }
   const next = `creatoros-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  window.localStorage.setItem(key, next);
+  try { window.localStorage.setItem(key, next); } catch { /* Keep an ephemeral session id. */ }
   return next;
 }
 
@@ -71,13 +73,14 @@ export function ChatPage({ navigate }: { navigate: Navigate }) {
 
   return <>
     <PageHeader title="对话" description="用知序工作台发起研究、改写和任务协作。消息、阻断状态和恢复动作都保留在当前会话。">
-      <button className="secondary" onClick={() => navigate('workspace')}>转到一键工作流</button>
+      <button type="button" className="secondary" onClick={() => navigate('workspace')}>转到一键工作流</button>
     </PageHeader>
-    {notice && <div className="message error" role="status">{notice}</div>}
+    {notice && <div className="message error" role="alert">{notice}</div>}
     <section className="panel creator-chat">
       <div className="creator-chat-head"><div><h2>先问一个具体问题</h2></div><span className="state">本地会话</span></div>
-      <div className="creator-chat-log" aria-live="polite">{messages.length === 0 ? <div className="empty"><h2>还没有消息</h2><p>可以从来源核验、选题角度、平台改写或质量检查开始。</p></div> : messages.map((message, index) => <article className={`creator-chat-message ${message.role} ${message.blocked ? 'blocked' : ''}`} key={index}><span>{message.role === 'user' ? '你' : '知序'}</span><p>{message.content || (busy && index === messages.length - 1 ? '正在连接模型服务…' : '')}</p></article>)}</div>
-      <div className="creator-chat-compose"><textarea aria-label="输入研究问题、改写要求或平台限制" rows={3} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder="输入研究问题、改写要求或平台限制…" disabled={busy} /><div className="action-row"><small className="hint">Enter 发送 · Shift+Enter 换行 · 不会伪造模型结果</small>{busy ? <button className="secondary" onClick={() => { stopRequested.current = true; abort.current?.abort(); }}>停止</button> : <button className="primary" disabled={!input.trim()} onClick={() => void send()}>发送</button>}</div></div>
+      <div className="creator-chat-log" aria-busy={busy}>{messages.length === 0 ? <div className="empty"><h2>还没有消息</h2><p>可以从来源核验、选题角度、平台改写或质量检查开始。</p></div> : messages.map((message, index) => <article className={`creator-chat-message ${message.role} ${message.blocked ? 'blocked' : ''}`} key={index}><span>{message.role === 'user' ? '你' : '知序'}</span><p>{message.content || (busy && index === messages.length - 1 ? '正在连接模型服务…' : '')}</p></article>)}</div>
+      <div className="creator-chat-status" role="status" aria-live="polite">{busy ? '正在生成回复' : notice ? '本轮已停止或被阻断' : ''}</div>
+      <div className="creator-chat-compose"><textarea aria-label="输入研究问题、改写要求或平台限制" rows={3} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder="输入研究问题、改写要求或平台限制…" disabled={busy} /><div className="action-row"><small className="hint">回车发送 · 换行请按 Shift+回车 · 不会伪造模型结果</small>{busy ? <button type="button" className="secondary" onClick={() => { stopRequested.current = true; abort.current?.abort(); }}>停止</button> : <button type="button" className="primary" disabled={!input.trim()} onClick={() => void send()}>发送</button>}</div></div>
     </section>
   </>;
 }

@@ -53,13 +53,13 @@ export function OutputsPage() {
   };
   useEffect(refresh, []);
   return <>
-    <PageHeader title="产物树" description="工作流产物按知序的运行目录展示，便于追踪来源、查看草稿和继续编辑。目录只读，发布仍需在发布中心显式操作。"><button className="secondary" onClick={refresh}>刷新</button></PageHeader>
-    {error && <Message error>{error} <button className="link" onClick={refresh}>重试</button></Message>}
+    <PageHeader title="产物树" description="工作流产物按知序的运行目录展示，便于追踪来源、查看草稿和继续编辑。目录只读，发布仍需在发布中心显式操作。"><button type="button" className="secondary" onClick={refresh}>刷新</button></PageHeader>
+    {error && <Message error>{error} <button type="button" className="link" onClick={refresh}>重试</button></Message>}
     <section className="panel outputs-panel">{nodes.length ? <Tree nodes={nodes} onOpen={openOutput} /> : <Empty title="还没有运行产物"><p>启动一次一键工作流后，素材核验、写作计划、平台改写和检查结果会按作业归档到这里。</p></Empty>}
       {preview && <section className="output-preview" aria-live="polite" aria-busy={preview.status === 'loading'}>
         <header className="output-preview-head"><div><span className="output-preview-kicker">产物预览</span><h2 title={preview.node.path}>{preview.node.name}</h2><small>{preview.node.path}</small></div><button type="button" className="quiet-button" onClick={closePreview} aria-label="关闭预览">关闭</button></header>
         {preview.status === 'loading' && <div className="output-preview-state">正在读取产物…</div>}
-        {preview.status === 'error' && <Message error>{preview.error || '产物读取失败'} <button className="link" onClick={() => void openOutput(preview.node)}>重试</button></Message>}
+        {preview.status === 'error' && <Message error>{preview.error || '产物读取失败'} <button type="button" className="link" onClick={() => void openOutput(preview.node)}>重试</button></Message>}
         {preview.status === 'ready' && preview.isBinary && <div className="output-preview-state"><p>该文件为 {preview.kind || '二进制'} 文件，无法在文本预览中显示。</p><a className="secondary" href={officialOutputMediaUrl(preview.node.path)} download={preview.node.name}>下载 {preview.node.name}</a></div>}
         {preview.status === 'ready' && !preview.isBinary && <><pre className="output-preview-content">{preview.content || '（空文件）'}</pre><div className="output-preview-actions"><button type="button" className="secondary" onClick={downloadText}>下载文本</button><span>{preview.content.length.toLocaleString('zh-CN')} 字符</span></div></>}
       </section>}
