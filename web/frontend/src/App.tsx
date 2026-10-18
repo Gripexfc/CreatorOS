@@ -20,10 +20,10 @@ const AccountsPage = lazy(() => import('./Pages').then(module => ({ default: mod
 
 const routes = [
   ['hotspots', '热点话题', 'compass', '从热点开始'],
-  ['breakdown', '研究参考内容', 'spark', '把参考内容变成自己的方法'],
+  ['breakdown', '拆解', 'spark', '把参考内容变成自己的方法'],
   ['create', '内容工作区', 'pen', '从主题开始'],
   ['library', '内容库', 'file', '继续打磨作品'],
-  ['profile', '我的写作偏好', 'settings', '让内容更像你'],
+  ['profile', '画像', 'settings', '让内容更像你'],
   ['analytics', '账号分析', 'chart', '查看账号表现'],
   ['settings', '模型设置', 'sliders', '配置并测试模型服务'],
   ['accounts', '账号与连接', 'settings', '连接平台账号'],
@@ -35,8 +35,8 @@ const routes = [
   ['skills', '能力说明', 'spark', '查看可用能力'],
 ] as const;
 type RouteKey = (typeof routes)[number][0];
-const primaryKeys: readonly RouteKey[] = ['overview', 'hotspots', 'create', 'library', 'profile', 'publish'];
-const utilityKeys: readonly RouteKey[] = ['breakdown', 'analytics', 'settings', 'accounts', 'drafts', 'outputs', 'chat', 'skills'];
+const primaryKeys: readonly RouteKey[] = ['profile', 'hotspots', 'create'];
+const utilityKeys: readonly RouteKey[] = ['settings', 'analytics', 'breakdown'];
 
 type ThemeMode = 'dark' | 'light' | 'system';
 type ThemeOption = { value: ThemeMode; label: string };
