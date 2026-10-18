@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
+from pathlib import Path
 from threading import Lock
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -111,16 +113,93 @@ def parse_items(payload: Any, platform: str) -> List[Dict[str, Any]]:
 class TrendService:
     """Fetch each source independently, keeping a timestamped last good result."""
 
-    def __init__(self, fetcher: Optional[Callable[[str], Any]] = None, clock: Callable[[], float] = time.monotonic):
+    def __init__(
+        self,
+        fetcher: Optional[Callable[[str], Any]] = None,
+        clock: Callable[[], float] = time.monotonic,
+        cache_path: Optional[Path] = None,
+    ):
         self._fetcher = fetcher or fetch_json
         self._clock = clock
         self._cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
         self._locks = {platform: Lock() for platform in TREND_SOURCES}
+        self._cache_path = Path(cache_path) if cache_path else None
+        self._cache_state_lock = Lock()
+        self._cache_file_lock = Lock()
+        self._cache_mtime_ns: Optional[int] = None
+        self._load_persisted_cache()
+
+    def _load_persisted_cache(self) -> None:
+        if self._cache_path is None or not self._cache_path.is_file():
+            return
+        try:
+            mtime_ns = self._cache_path.stat().st_mtime_ns
+            with self._cache_path.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            feeds = payload.get("feeds", {}) if isinstance(payload, dict) else {}
+            if not isinstance(feeds, dict):
+                return
+            now = self._clock()
+            wall_now = time.time()
+            loaded: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+            for platform, entry in feeds.items():
+                if platform not in TREND_SOURCES or not isinstance(entry, dict):
+                    continue
+                result = entry.get("result")
+                cached_at = entry.get("cached_at")
+                if not isinstance(result, dict) or not isinstance(cached_at, (int, float)):
+                    continue
+                age = max(0.0, wall_now - float(cached_at))
+                loaded[platform] = (now - age, result)
+            with self._cache_state_lock:
+                self._cache.update(loaded)
+            self._cache_mtime_ns = mtime_ns
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            # A damaged or partially written cache must never prevent the API
+            # from starting; the next successful fetch will replace it.
+            return
+
+    def _reload_persisted_cache_if_changed(self) -> None:
+        if self._cache_path is None or not self._cache_path.is_file():
+            return
+        try:
+            mtime_ns = self._cache_path.stat().st_mtime_ns
+        except OSError:
+            return
+        if self._cache_mtime_ns is None or mtime_ns > self._cache_mtime_ns:
+            self._load_persisted_cache()
+
+    def _persist_cache(self) -> None:
+        if self._cache_path is None:
+            return
+        try:
+            self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._cache_file_lock:
+                with self._cache_state_lock:
+                    feeds = {
+                        platform: {"cached_at": time.time(), "result": result}
+                        for platform, (_cached_at, result) in self._cache.items()
+                    }
+                payload = {
+                    "version": 1,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "feeds": feeds,
+                }
+                temporary = self._cache_path.with_suffix(self._cache_path.suffix + ".tmp")
+                with temporary.open("w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
+                os.replace(temporary, self._cache_path)
+                self._cache_mtime_ns = self._cache_path.stat().st_mtime_ns
+        except OSError:
+            # Cache persistence is an optimization. Live fetching should keep
+            # working when a read-only or locked runtime directory is used.
+            return
 
     def _platform(self, platform: str, refresh: bool) -> Dict[str, Any]:
         label, sources = TREND_SOURCES[platform]
         with self._locks[platform]:
-            cached = self._cache.get(platform)
+            with self._cache_state_lock:
+                cached = self._cache.get(platform)
             if cached and not refresh and self._clock() - cached[0] < REFRESH_SECONDS:
                 return {**cached[1], "status": "cached"}
             for source_name, source_url in sources:
@@ -138,7 +217,9 @@ class TrendService:
                         "error": None,
                         "items": items,
                     }
-                    self._cache[platform] = (self._clock(), result)
+                    with self._cache_state_lock:
+                        self._cache[platform] = (self._clock(), result)
+                    self._persist_cache()
                     return result
                 except Exception:
                     # A provider failure must not break other platforms. Avoid
@@ -154,6 +235,7 @@ class TrendService:
             }
 
     def get_trends(self, platforms: List[str], limit: int = 12, refresh: bool = False) -> Dict[str, Any]:
+        self._reload_persisted_cache_if_changed()
         platforms = list(dict.fromkeys(platforms))
         if not platforms or any(platform not in TREND_SOURCES for platform in platforms):
             raise ValueError("不支持的热榜来源")

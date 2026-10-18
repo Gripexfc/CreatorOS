@@ -60,6 +60,24 @@ def test_ttl_force_refresh_and_limit_do_not_truncate_cache():
     assert len(calls) == 3
 
 
+def test_persistent_cache_round_trip(tmp_path):
+    cache_path = tmp_path / "trend-cache.json"
+
+    first = TrendService(
+        fetcher=lambda _url: {"data": [{"title": "每日缓存热点"}]},
+        cache_path=cache_path,
+    )
+    first.get_trends(["douyin"])
+
+    def should_not_fetch(_url):
+        raise AssertionError("应直接使用持久化缓存")
+
+    second = TrendService(fetcher=should_not_fetch, cache_path=cache_path)
+    feed = second.get_trends(["douyin"])["trends"][0]
+    assert feed["status"] == "cached"
+    assert feed["items"][0]["title"] == "每日缓存热点"
+
+
 def test_fallback_success_records_actual_provider():
     calls = []
 

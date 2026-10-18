@@ -156,7 +156,7 @@ def create_app(settings: Optional[Settings] = None, initialize: bool = True) -> 
     app = FastAPI(title="CreatorOS API", version=__version__, lifespan=lifespan)
     app.state.settings = resolved
     app.state.engine = engine
-    app.state.trend_service = TrendService()
+    app.state.trend_service = TrendService(cache_path=resolved.data_dir / "trend-cache.json")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[resolved.frontend_origin, "http://localhost:5173"],
