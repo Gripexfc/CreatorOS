@@ -122,6 +122,12 @@ const workflowErrorText = (error: unknown) => {
   if (/timeout|超时/i.test(message)) return '生成等待超时，当前主题和素材已保留。请稍后重试，或先检查模型服务。';
   return message || '这次没有生成成功，当前主题和素材已保留，请稍后重试。';
 };
+const workflowRecoveryErrorText = (error: unknown) => {
+  const message = errorText(error);
+  return /请求失败|failed to fetch|networkerror|load failed|操作失败/i.test(message)
+    ? '本地工作流记录读取失败，请确认 CreatorOS API 已启动；如果刚更新过代码，请关闭旧的 API 窗口后重新运行 start-all-windows.bat。'
+    : message;
+};
 
 export function QuickCreatePage({ navigate }: { navigate: (path: string) => void }) {
   const [outputKind, setOutputKind] = useState<OutputKind>('standard');
@@ -468,7 +474,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
         } catch (e) {
           if (!cancelled) { const message = errorText(e); setStage(''); setBusy(false); setGatewayBlocked(isGatewayBlocked(message)); setError(workflowErrorText(e)); workflowWatchRef.current = false; setWorkflowWatching(false); }
         } finally { if (!cancelled) setBusy(false); }
-      } catch (e) { if (!cancelled) setError(`工作流恢复失败：${errorText(e)}`); }
+      } catch (e) { if (!cancelled) setError(`工作流恢复失败：${workflowRecoveryErrorText(e)}`); }
     })();
     // StrictMode performs an extra cleanup/setup cycle. Reset the guard so
     // the second setup can own recovery instead of leaving it cancelled.

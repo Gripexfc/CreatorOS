@@ -149,12 +149,22 @@ class WorkflowService:
         with self.lock:
             try:
                 return json.loads(self._path(job_id).read_text())
-            except FileNotFoundError:
+            except (FileNotFoundError, OSError, TypeError, ValueError):
                 raise KeyError(job_id)
 
     def list(self):
         with self.lock:
-            jobs = [json.loads(p.read_text()) for p in self.directory.glob('*.json')]
+            jobs = []
+            for path in self.directory.glob('*.json'):
+                try:
+                    job = json.loads(path.read_text())
+                except (OSError, TypeError, ValueError):
+                    # A machine shutdown can leave a legacy/corrupt job file.
+                    # One bad recovery record must not make the whole composer
+                    # fail with a generic 500 on every page load.
+                    continue
+                if isinstance(job, dict):
+                    jobs.append(job)
         return sorted(jobs, key=lambda j: j.get('created', 0), reverse=True)[:50]
 
     @staticmethod

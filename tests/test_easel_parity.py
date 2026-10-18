@@ -245,6 +245,18 @@ def test_workflow_restart_marks_interrupted_and_recovers(tmp_path):
     service.executor.shutdown()
 
 
+def test_workflow_list_skips_corrupt_recovery_record(tmp_path):
+    folder = tmp_path / '_workflow'
+    folder.mkdir()
+    (folder / 'corrupt.json').write_text('{"status":', encoding='utf-8')
+    (folder / 'valid.json').write_text(json.dumps({'id': '123456789abc', 'created': 2}), encoding='utf-8')
+    service = WorkflowService(tmp_path, lambda: False, lambda _: '')
+    assert service.list() == [{'id': '123456789abc', 'created': 2}]
+    with pytest.raises(KeyError):
+        service.get('123456789abc')
+    service.executor.shutdown()
+
+
 @pytest.fixture
 def parity_client():
     with TestClient(app, base_url='http://127.0.0.1:8000', headers={'Origin': 'http://127.0.0.1:8000'}) as c:
