@@ -41,6 +41,75 @@ CODE_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = Path(os.environ.get("CREATOROS_RUNTIME_ROOT", str(CODE_ROOT / "runtime"))).expanduser().resolve()
 
 
+def _is_directory_link(path: Path) -> bool:
+    """Return True for symlinks and Windows junctions."""
+    try:
+        is_junction = getattr(path, "is_junction", None)
+        return path.is_symlink() or bool(is_junction and is_junction())
+    except OSError:
+        return False
+
+
+def _remove_directory_link(path: Path) -> None:
+    """Remove a directory link without following it on Windows."""
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd.exe", "/d", "/c", f'rmdir "{path}"'],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode != 0:
+            raise OSError(result.stderr.strip() or f"无法删除目录联接：{path}")
+    else:
+        path.unlink()
+
+
+def _ensure_directory_link(target: Path, source: Path, *, copy_fallback: bool = False) -> None:
+    """Create a source directory link, using a Windows junction when needed.
+
+    Windows requires the Developer Mode/admin privilege for ordinary directory
+    symlinks, while ``mklink /J`` works for local directories without it. If a
+    non-empty skills directory already exists, merge the source into it as a
+    safe fallback; outputs are kept as a real junction so the gateway and web
+    app always see the same files.
+    """
+    if not source.exists():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if _is_directory_link(target):
+        try:
+            if target.resolve() == source.resolve():
+                return
+        except OSError:
+            pass
+        _remove_directory_link(target)
+    elif target.exists():
+        if target.is_dir():
+            try:
+                has_content = next(target.iterdir(), None) is not None
+            except OSError:
+                has_content = True
+            if has_content:
+                if copy_fallback:
+                    shutil.copytree(source, target, dirs_exist_ok=True)
+                    return
+                # Preserve generated files before replacing a stale ordinary
+                # outputs directory with the canonical runtime junction.
+                shutil.copytree(target, source, dirs_exist_ok=True)
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd.exe", "/d", "/c", f'mklink /J "{target}" "{source}"'],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode != 0:
+            raise OSError(result.stderr.strip() or result.stdout.strip() or f"无法创建目录联接：{target}")
+    else:
+        target.symlink_to(source, target_is_directory=True)
+
+
 def _ensure_runtime_workspace() -> None:
     """Make the isolated CreatorOS OpenClaw workspace read the migrated skills.
 
@@ -63,7 +132,9 @@ def _ensure_runtime_workspace() -> None:
     # ``skills/openclaw`` made the latter path silently disappear, so agents
     # could not load shared scripts even though they were present elsewhere.
     skills_root = workspace / "skills"
-    if skills_root.is_symlink() or (skills_root.exists() and not skills_root.is_dir()):
+    if _is_directory_link(skills_root):
+        _remove_directory_link(skills_root)
+    elif skills_root.exists() and not skills_root.is_dir():
         skills_root.unlink()
     skills_root.mkdir(parents=True, exist_ok=True)
     skill_sources = (CODE_ROOT / "skills" / "openclaw",)
@@ -72,13 +143,14 @@ def _ensure_runtime_workspace() -> None:
             continue
         for source in source_root.iterdir():
             target = skills_root / source.name
-            if target.exists() or target.is_symlink():
-                continue
-            target.symlink_to(source, target_is_directory=source.is_dir())
+            if source.is_dir():
+                _ensure_directory_link(target, source, copy_fallback=True)
+            elif not target.exists():
+                shutil.copy2(source, target)
     shared_source = CODE_ROOT / "skills" / "shared"
     shared_target = skills_root / "shared"
-    if shared_source.is_dir() and not shared_target.exists() and not shared_target.is_symlink():
-        shared_target.symlink_to(shared_source, target_is_directory=True)
+    if shared_source.is_dir():
+        _ensure_directory_link(shared_target, shared_source, copy_fallback=True)
 
     # Keep the shorter legacy path for older prompts and third-party skills.
     links = {
@@ -87,17 +159,8 @@ def _ensure_runtime_workspace() -> None:
     }
     for name, source in links.items():
         target = workspace / name
-        if target.is_symlink():
-            try:
-                if target.resolve() == source.resolve():
-                    continue
-            except OSError:
-                pass
-            target.unlink()
-        if target.exists():
-            continue
         if source.exists():
-            target.symlink_to(source, target_is_directory=True)
+            _ensure_directory_link(target, source, copy_fallback=name == "shared")
     context = workspace / "CONTEXT.md"
     try:
         context.write_text(
@@ -1928,6 +1991,29 @@ async def api_settings_models_status():
     }
 
 
+@app.post("/api/settings/models/start")
+async def api_settings_models_start():
+    """Start the isolated model gateway when a saved config exists."""
+    config_path = PROJECT_ROOT / "openclaw" / "openclaw.json"
+    if not config_path.is_file():
+        return {
+            "ok": False,
+            "started": False,
+            "gatewayOnline": False,
+            "gatewayUrl": gateway_base_url(OPENCLAW_PROFILE),
+            "note": "尚未保存模型配置，请先到模型设置保存并测试。",
+        }
+    note = await asyncio.to_thread(_ensure_creatoros_gateway)
+    online = check_gateway()
+    return {
+        "ok": online,
+        "started": online,
+        "gatewayOnline": online,
+        "gatewayUrl": gateway_base_url(OPENCLAW_PROFILE),
+        "note": note or ("本地创作服务已启动。" if online else "本地创作服务未能启动，请查看 runtime/logs/openclaw-gateway.log。"),
+    }
+
+
 def _write_env_direct(updates: dict[str, str]) -> None:
     """后端受控键位专用：就地更新/追加/删除 .env（原子写）。
 
@@ -2122,24 +2208,33 @@ def _ensure_creatoros_gateway() -> str:
             command = openclaw_base_cmd()
         except FileNotFoundError:
             return '配置已保存，但未找到 OpenClaw CLI；请先运行 npm i -g openclaw，再重启 CreatorOS。'
+        log_path = PROJECT_ROOT / 'logs' / 'openclaw-gateway.log'
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = None
         try:
             env = _proxy_env()
             env['OPENCLAW_RAW_STREAM'] = '1'
             env['OPENCLAW_RAW_STREAM_PATH'] = str(SHARED_RAW_STREAM)
+            log_handle = log_path.open('a', encoding='utf-8')
+            log_handle.write(f'\n[{time.strftime("%Y-%m-%d %H:%M:%S")}] starting CreatorOS gateway\n')
+            log_handle.flush()
             proc = subprocess.Popen(
                 command + ['--profile', OPENCLAW_PROFILE, 'gateway', 'run',
                            '--bind', 'loopback', '--port', str(resolve_gateway_port(OPENCLAW_PROFILE))],
                 cwd=str(PROJECT_ROOT), env=env, stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            for _ in range(40):
+                stdout=log_handle, stderr=subprocess.STDOUT, start_new_session=True)
+            log_handle.close()
+            log_handle = None
+            for _ in range(120):
                 if check_gateway():
                     return '本地创作服务已启动，可以开始创作。'
                 if proc.poll() is not None:
                     break
                 time.sleep(0.25)
         except (OSError, subprocess.SubprocessError):
-            pass
-        return '模型信息已保存，但本地创作服务未能启动；请重试保存并测试。'
+            if log_handle is not None:
+                log_handle.close()
+        return f'模型信息已保存，但本地创作服务未能启动；请查看日志：{log_path}'
 
 
 class ModelSaveRow(BaseModel):
@@ -2352,7 +2447,11 @@ async def api_settings_models_save(req: ModelSaveRequest):
     note = ''
     if is_chat:
         note = await asyncio.to_thread(_sync_openclaw_chat, provider_updates, keep_custom, primary_ref)
-        if '失败' not in note and '未完成' not in note:
+        # A failed first-run `setup --baseline` can still leave a valid local
+        # fallback config on disk.  Do not stop here: try to start the gateway
+        # with that config so a transient/non-interactive setup failure does
+        # not force the user through another save cycle.
+        if '失败' not in note:
             gateway_note = await asyncio.to_thread(_ensure_creatoros_gateway)
             note = '；'.join(value for value in (note, gateway_note) if value)
             # A saved model/base URL may differ from the one that was probed.

@@ -16,6 +16,7 @@ back to the PATH `openclaw` executable rather than hard-failing.
 from __future__ import annotations
 
 import shutil
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 
@@ -48,6 +49,22 @@ def openclaw_base_cmd() -> list[str]:
             # Windows standard: npm global prefix == %APPDATA%/npm
             Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "openclaw" / "openclaw.mjs",
         ]
+        # npm can be configured with a custom global prefix. Ask npm for the
+        # actual package root instead of assuming %APPDATA%\npm.
+        for npm_name in ("npm", "npm.cmd"):
+            npm = shutil.which(npm_name)
+            if not npm:
+                continue
+            try:
+                npm_root = subprocess.run(
+                    [npm, "root", "-g"], capture_output=True, text=True,
+                    timeout=10, check=False,
+                ).stdout.strip()
+            except (OSError, subprocess.SubprocessError):
+                npm_root = ""
+            if npm_root:
+                candidates.append(Path(npm_root) / "openclaw" / "openclaw.mjs")
+            break
         # macOS installations managed by nvm keep the active CLI beside the
         # selected Node binary, while the web server may be launched without
         # loading the user's shell profile.  Discover those versions without

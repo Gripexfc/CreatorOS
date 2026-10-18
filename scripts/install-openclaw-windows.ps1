@@ -15,16 +15,8 @@ function Find-OpenClaw {
     return $command
 }
 
-$openclaw = Find-OpenClaw
-
 if ($null -eq $node -or $null -eq $npm) {
     throw '找不到 Node.js/npm。请先安装 Node.js 24.16+，再重新运行 install-openclaw-windows.bat。'
-}
-
-if ($null -ne $openclaw) {
-    Write-Host "已找到 OpenClaw：$($openclaw.Source)" -ForegroundColor Green
-    & $openclaw.Source '--version'
-    exit $LASTEXITCODE
 }
 
 $nodeVersion = (& $node.Source '--version').Trim().TrimStart('v')
@@ -33,6 +25,13 @@ $nodeMajor = [int]$nodeParts[0]
 $nodeMinor = [int]$nodeParts[1]
 if ($nodeMajor -lt 24 -or ($nodeMajor -eq 24 -and $nodeMinor -lt 16)) {
     throw "当前 Node.js 为 $nodeVersion。OpenClaw 最新版需要 Node.js 24.16+，请升级 Node.js 后重试。"
+}
+
+$openclaw = Find-OpenClaw
+if ($null -ne $openclaw) {
+    Write-Host "已找到 OpenClaw：$($openclaw.Source)" -ForegroundColor Green
+    & $openclaw.Source '--version'
+    exit $LASTEXITCODE
 }
 
 Write-Host '正在安装 OpenClaw（全局 npm 包）…' -ForegroundColor Cyan

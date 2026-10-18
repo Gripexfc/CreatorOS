@@ -132,6 +132,25 @@ def test_model_status_recognizes_custom_openclaw_provider(monkeypatch, tmp_path)
     assert response.json()["configured"] is True
 
 
+def test_model_start_reports_missing_config_without_spawning(monkeypatch, tmp_path):
+    monkeypatch.setattr(upstream, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(upstream, "gateway_base_url", lambda _profile: "http://127.0.0.1:1234")
+    with TestClient(upstream.app, base_url="http://127.0.0.1:8000") as client:
+        response = client.post(
+            "/api/settings/models/start",
+            json={},
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": False,
+        "started": False,
+        "gatewayOnline": False,
+        "gatewayUrl": "http://127.0.0.1:1234",
+        "note": "尚未保存模型配置，请先到模型设置保存并测试。",
+    }
+
+
 def test_model_selftest_persistence_strips_credentials(monkeypatch, tmp_path):
     model_file = tmp_path / "openclaw" / "model-selftest.json"
     monkeypatch.setattr(upstream, "MODEL_SELFTEST_FILE", model_file)

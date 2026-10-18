@@ -511,7 +511,9 @@ export function ModelSettingsPage() {
       setGateway(nextGateway);
       const gatewayHint = nextGateway?.gatewayOnline
         ? '模型服务已运行，但还没完成验证；请点击“保存并测试”。'
-        : '配置已保存，模型服务还没启动；启动后点击“保存并测试”。';
+        : nextGateway
+          ? '配置已保存，但本地创作服务还没启动；请先安装或启动 OpenClaw，再点击“保存并测试”。'
+          : '配置已保存，但暂时读不到本地创作服务状态；请点击“重新读取”后再试。';
       setNotice(`${preset.label} 配置已保存。${gatewayHint}${response.note ? ` ${response.note}` : ''}`);
       return true;
     } catch (e) {
@@ -530,11 +532,17 @@ export function ModelSettingsPage() {
     try {
       const response = await selftestModel();
       setTestResults(response.results || []);
-      setGateway(await getModelGatewayStatus().catch(() => gateway));
+      const nextGateway = await getModelGatewayStatus().catch(() => gateway);
+      setGateway(nextGateway);
+      const gatewayHint = nextGateway
+        ? (nextGateway.gatewayOnline ? '' : '本地创作服务还没启动，请先安装或启动 OpenClaw 后再开始创作。')
+        : '暂时读不到本地创作服务状态，请点击“重新读取”后再试。';
       if (!response.results.length) {
         setNotice('配置已保存，但暂时没有可检查的模型。请确认 API Key 后再试。');
       } else if (response.results.every(result => result.ok)) {
-          setNotice('模型测试通过：服务地址、API Key、模型权限和账户额度均已完成一次最小生成验证。');
+          setNotice(gatewayHint
+            ? `模型接口测试通过，但${gatewayHint}`
+            : '模型测试通过：服务地址、API Key、模型权限和账户额度均已完成一次最小生成验证。');
       } else {
         // save() 之后 rows 可能要等下一次渲染才更新，因此这里同时把本次表单
         // 地址视为主模型地址，避免刚保存的主模型被误判成备份。
@@ -546,9 +554,13 @@ export function ModelSettingsPage() {
           .filter(result => !primaryBases.has(normalizeBaseUrl(result.baseUrl)))
           .some(result => !result.ok);
         if (primaryPassed && backupFailed) {
-          setNotice('主模型测试通过，另有备份模型失败。配置已保存，当前生成会使用主模型。');
+          setNotice(gatewayHint
+            ? `主模型测试通过，另有备份模型失败；但${gatewayHint}`
+            : '主模型测试通过，另有备份模型失败。配置已保存，当前生成会使用主模型。');
         } else if (primaryPassed) {
-          setNotice('主模型测试通过。配置已保存，可以开始创作。');
+          setNotice(gatewayHint
+            ? `主模型测试通过，但${gatewayHint}`
+            : '主模型测试通过。配置已保存，可以开始创作。');
         } else if (response.results.some(result => result.ok)) {
           setNotice('主模型测试未通过，但有备份模型通过；请查看下方结果并处理主模型配置。');
         } else {
@@ -587,7 +599,15 @@ export function ModelSettingsPage() {
       || primary !== (current.role === '主')))
     || (!current && (model.trim() || baseUrl.trim() || key.trim() || name.trim())),
   );
-  const verifiedPrimary = primaryPassed && !hasUnsavedChanges;
+  // The upstream probe talks to the provider directly. Content creation still
+  // goes through CreatorOS's local OpenClaw gateway, so both checks are needed
+  // before the page can claim that creation is ready.
+  const upstreamVerifiedPrimary = primaryPassed && !hasUnsavedChanges;
+  const gatewayReady = gateway?.gatewayOnline === true;
+  const gatewayStatusUnknown = gateway === null && !loading;
+  const gatewayBlockedAfterTest = upstreamVerifiedPrimary && !gatewayReady && !gatewayStatusUnknown;
+  const gatewayUnknownAfterTest = upstreamVerifiedPrimary && gatewayStatusUnknown;
+  const verifiedPrimary = upstreamVerifiedPrimary && gatewayReady;
   // 兼容旧配置无法从 rows 找到主模型的情况：只有所有结果都失败时才判定整体失败。
   const testFailed = primaryResults.length ? primaryFailed : testResults.length > 0 && testResults.every(result => !result.ok);
   const partialBackupFailure = verifiedPrimary && backupFailed;
@@ -597,6 +617,10 @@ export function ModelSettingsPage() {
       ? '主模型可用，备用模型异常'
       : verifiedPrimary
         ? '连接已验证'
+        : gatewayBlockedAfterTest
+          ? '接口已验证，网关未启动'
+          : gatewayUnknownAfterTest
+            ? '接口已验证，网关状态未知'
         : testFailed
           ? '模型验证失败'
           : gateway?.gatewayOnline
@@ -608,6 +632,10 @@ export function ModelSettingsPage() {
     ? '有未保存修改，需要重新测试'
     : verifiedPrimary
     ? '连接成功，可以开始创作'
+    : gatewayBlockedAfterTest
+      ? '模型接口已验证，但本地服务未启动'
+      : gatewayUnknownAfterTest
+        ? '模型接口已验证，但本地服务状态未知'
     : testFailed
       ? '模型暂时不可用'
       : gateway?.gatewayOnline
@@ -621,19 +649,37 @@ export function ModelSettingsPage() {
     ? partialBackupFailure
       ? `主模型已经通过一次最小生成测试，可以开始创作；${backupResults.filter(result => !result.ok).length} 个备用模型检查失败，可稍后处理。`
       : '主模型已经通过一次最小生成测试，可以开始创作。你可以回到研究参考内容或开始创作。'
+    : gatewayBlockedAfterTest
+      ? '模型服务商的地址、API Key、模型权限和账户额度已经通过最小生成测试，但 CreatorOS 本地网关还没有启动。请安装或启动 OpenClaw 后，再点击“保存并测试”。'
+      : gatewayUnknownAfterTest
+        ? '模型服务商的最小生成测试已经通过，但暂时读不到 CreatorOS 本地网关状态。请点击“重新读取”后再试。'
     : testFailed
-      ? '模型服务在线，但主模型测试没有通过；请按下方结果处理服务地址、API Key、模型编号或账户额度。'
+      ? '主模型测试没有通过；请按下方结果处理服务地址、API Key、模型编号或账户额度。'
       : gateway?.gatewayOnline
         ? '模型服务已经运行，但还没有验证能否生成内容。点击“保存并测试”，检查 API Key、模型权限和账户额度。'
         : gateway?.configured
           ? '配置已经保存，但模型服务还没启动；启动后点击“保存并测试”。'
           : '先选择模型服务商、模型并填写 API Key，再点击“保存并测试”。';
   const modelOptions = model && !modelIsKnown ? [model, ...availableModels] : availableModels;
-  const feedbackState = hasUnsavedChanges ? 'warning' : verifiedPrimary ? (partialBackupFailure ? 'warning' : 'success') : testFailed ? 'error' : notice ? 'success' : 'info';
+  const feedbackState = hasUnsavedChanges
+    ? 'warning'
+    : verifiedPrimary
+      ? (partialBackupFailure ? 'warning' : 'success')
+      : gatewayBlockedAfterTest || gatewayUnknownAfterTest
+        ? 'warning'
+        : testFailed
+          ? 'error'
+          : notice
+            ? 'success'
+            : 'info';
   const feedbackTitle = hasUnsavedChanges
     ? '有未保存修改'
     : verifiedPrimary
     ? (partialBackupFailure ? '主模型已连接，备用模型需要处理' : '模型连接成功')
+    : gatewayBlockedAfterTest
+      ? '模型接口已验证，但本地服务未启动'
+      : gatewayUnknownAfterTest
+        ? '模型接口已验证，但本地服务状态未知'
     : testFailed
       ? '模型连接未通过'
       : notice

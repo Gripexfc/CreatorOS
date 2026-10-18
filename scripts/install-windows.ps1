@@ -34,13 +34,15 @@ try {
     $node = Find-CommandPath 'node.exe'
     $npm = Find-CommandPath 'npm.cmd'
     if ($null -eq $node -or $null -eq $npm) {
-        throw "找不到 Node.js/npm。请先安装 Node.js 20+（https://nodejs.org/），然后重新双击 install-windows.bat。"
+        throw "找不到 Node.js/npm。请先安装 Node.js 24.16+（https://nodejs.org/），然后重新双击 install-windows.bat。"
     }
 
     $nodeVersion = (& $node '--version').Trim()
-    $nodeMajor = [int]($nodeVersion.TrimStart('v').Split('.')[0])
-    if ($nodeMajor -lt 20) {
-        throw "需要 Node.js 20+，当前版本为 $nodeVersion。请升级后重新运行。"
+    $nodeParts = $nodeVersion.TrimStart('v').Split('.')
+    $nodeMajor = [int]$nodeParts[0]
+    $nodeMinor = [int]$nodeParts[1]
+    if ($nodeMajor -lt 24 -or ($nodeMajor -eq 24 -and $nodeMinor -lt 16)) {
+        throw "模型服务需要 Node.js 24.16+，当前版本为 $nodeVersion。请升级 Node.js 后重新运行。"
     }
 
     $uv = Find-CommandPath 'uv.exe'
@@ -92,8 +94,23 @@ try {
         Pop-Location
     }
 
+    # OpenClaw is part of the normal Windows setup. Keeping this in the main
+    # installer avoids a half-installed state where the web app starts but
+    # every real generation is blocked by a missing local gateway.
+    $openclawInstaller = Join-Path $root 'scripts\install-openclaw-windows.ps1'
+    if (Test-Path $openclawInstaller) {
+        Write-Host "正在安装模型服务 OpenClaw…" -ForegroundColor Yellow
+        Invoke-Checked 'powershell.exe' @(
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            $openclawInstaller
+        )
+    }
+
     Write-Host ""
-    Write-Host "安装完成。以后双击项目根目录的 start-windows.bat 即可启动。" -ForegroundColor Green
+    Write-Host "安装完成。以后双击项目根目录的 start-all-windows.bat 即可启动。" -ForegroundColor Green
     Write-Host "浏览器地址：http://127.0.0.1:5173/#/create"
 }
 catch {
