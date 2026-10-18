@@ -162,6 +162,27 @@ button:disabled { opacity: .5; }
 .recent-topic-list button { min-height: 72px; padding: 14px 8px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
 .recent-topic-list button:hover { background: var(--hover); }
 .recent-topic-list strong { color: var(--ink); font-size: 13px; }
+.latest-work-showcase { position: relative; display: grid; grid-template-columns: 170px minmax(0, 1fr) auto; gap: 22px; align-items: center; margin-top: 28px; padding: 22px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-card); background: linear-gradient(135deg, var(--surface), var(--accent-soft)); box-shadow: var(--shadow-card); }
+.latest-work-showcase::after { content: ''; position: absolute; width: 220px; height: 220px; right: -96px; top: -125px; border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 50%; pointer-events: none; }
+.latest-work-visual { position: relative; display: grid; place-items: center; min-height: 112px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line)); border-radius: 18px; background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface)); }
+.latest-work-visual > strong { position: relative; z-index: 2; display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 50%; color: var(--accent); background: var(--surface); font: 700 22px/1 var(--font-display); box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 13%, transparent); }
+.latest-work-orbit { position: absolute; border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 50%; }
+.latest-work-orbit-one { width: 86px; height: 86px; }
+.latest-work-orbit-two { width: 132px; height: 132px; opacity: .65; }
+.latest-work-chart { position: absolute; right: 22px; bottom: 19px; display: flex; align-items: end; gap: 4px; height: 34px; opacity: .8; }
+.latest-work-chart i { display: block; width: 5px; border-radius: 4px 4px 1px 1px; background: var(--accent); }
+.latest-work-chart i:nth-child(1) { height: 11px; opacity: .45; }
+.latest-work-chart i:nth-child(2) { height: 19px; opacity: .6; }
+.latest-work-chart i:nth-child(3) { height: 27px; opacity: .78; }
+.latest-work-chart i:nth-child(4) { height: 34px; }
+.latest-work-copy { position: relative; z-index: 1; min-width: 0; }
+.latest-work-kicker { display: block; margin-bottom: 7px; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.latest-work-copy h2 { margin: 0; color: var(--ink); font: 720 24px/1.15 var(--font-display); letter-spacing: -.04em; }
+.latest-work-copy p { max-width: 54ch; margin: 9px 0 13px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.latest-work-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.latest-work-tags span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); font-size: 10px; }
+.latest-work-action { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 10px 14px; border: 1px solid var(--accent); border-radius: 9px; color: var(--accent); background: var(--surface); font-size: 12px; font-weight: 750; white-space: nowrap; transition: transform .18s ease, background .18s ease; }
+.latest-work-action:hover { transform: translateY(-1px); color: var(--surface); background: var(--accent); }
 .composer-layout, .breakdown-layout { grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 20px; }
 .composer-panel, .breakdown-input-panel { padding: 26px; }
 .output-panel, .breakdown-output-panel { position: sticky; top: 24px; min-height: 660px; padding: 26px; background: var(--output); border-top: 2px solid var(--accent); }
@@ -282,6 +303,9 @@ input:focus, textarea:focus, select:focus, .profile-studio-card input:focus, .pr
   .composer-panel, .breakdown-input-panel, .output-panel, .breakdown-output-panel,
   .profile-studio-card, .model-config-panel, .library-draft-detail { padding: 20px; }
   .profile-context-strip { flex-wrap: wrap; }
+  .latest-work-showcase { grid-template-columns: 1fr; gap: 16px; padding: 18px; }
+  .latest-work-visual { min-height: 96px; }
+  .latest-work-action { justify-content: center; width: 100%; }
   .platform-picker button > span:nth-child(2) { display: grid; gap: 4px; }
   .output-panel, .breakdown-output-panel { min-height: 480px; }
   .output-placeholder { min-height: 370px; }
