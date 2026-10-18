@@ -1028,15 +1028,18 @@ class EaselAgentWorkflowService(WorkflowService):
                     "master": f"# 主稿提示（图片任务）\n\n请围绕主题生成小红书竖版卡片：{job['topic']}\n",
                 }
                 for key, filename in (("discovery", "01-discovery.md"), ("topic", "02-topic.md"), ("master", "03-master.md")):
+                    self._debug_event(job, 'stage_started', stage=key, message=f'开始{job["stages"][key].get("label", key)}（图片任务跳过模型）')
                     path = folder / filename
                     self._atomic_write(path, checkpoint_text[key])
                     self._mark(job, key, "completed", "图片任务跳过文章模型阶段。", artifact=str(path.relative_to(self.outputs)))
+                    self._debug_event(job, 'stage_finished', stage=key, message=f'{job["stages"][key].get("label", key)}完成（图片任务检查点）', detail={'artifact': filename})
                 # Keep the image-only path completely separate from the Agent
                 # runner. The runner may use the chat model even when no text
                 # is requested, which defeats channel isolation.
                 platform = (job.get("platforms") or ["xiaohongshu"])[0]
                 if platform == "xiaohongshu":
                     try:
+                        self._debug_event(job, 'stage_started', stage='adaptation', platform=platform, message='开始小红书真实卡片生成')
                         platform_dir = folder / platform
                         receipt = _generate_xhs_images_direct(job, platform_dir)
                         check = validate_platform(platform, platform_dir, Path(__file__).resolve().parents[2] / "vendor" / "easel" / "skills")
@@ -1056,19 +1059,25 @@ class EaselAgentWorkflowService(WorkflowService):
                             "missing": receipt["missing"], "status": receipt["status"],
                         }
                         self._mark(job, "adaptation", receipt["status"], ";".join(receipt["missing"]), artifact=None)
+                        self._debug_event(job, 'artifact_validation', stage='adaptation', platform=platform, message=f'小红书图片产物校验：{receipt["status"]}', detail={'artifacts': len(receipt.get('artifacts', [])), 'missing': ','.join(receipt.get('missing', []))})
                         if receipt["status"] != "completed":
+                            self._debug_event(job, 'stage_blocked', stage='adaptation', platform=platform, message='小红书图片产物校验未通过')
                             with self.lock:
                                 job.update(status="blocked", current=None)
                                 self._save(job)
                             return
                         for key in ("quality", "archive"):
+                            self._debug_event(job, 'stage_started', stage=key, platform=platform, message=f'开始{job["stages"][key].get("label", key)}（图片任务）')
                             self._mark(job, key, "completed", "图片任务已完成真实 PNG 产物校验。")
+                            self._debug_event(job, 'stage_finished', stage=key, platform=platform, message=f'{job["stages"][key].get("label", key)}完成（图片任务）')
                         with self.lock:
                             job.update(status="completed", current=None, content_status="draft", published=False)
                             self._save(job)
+                        self._debug_event(job, 'workflow_finished', platform=platform, message='图片任务完成', detail={'artifacts': len(receipt.get('artifacts', []))})
                         return
                     except Exception as exc:
                         reason = f"独立生图不可用：{str(exc)[:240]}"
+                        self._debug_event(job, 'stage_failed', stage='adaptation', platform=platform, message=reason)
                         prefix = str(platform_dir.relative_to(self.outputs)).replace("\\", "/")
                         blocked_receipt = {
                             "schema_version": "1", "platform": platform,
@@ -1608,6 +1617,7 @@ class EaselAgentWorkflowService(WorkflowService):
                 live.update(status='completed', complete=True, error='', finished_at=time.time(), updated_at=time.time())
                 job.update(status="completed", current=None, content_status="draft", published=False)
                 self._save(job)
+            self._debug_event(job, 'workflow_finished', message='Easel 工作流完成', detail={'platforms': ','.join(job.get('platforms') or [])})
         except WorkflowInterruption as exc:
             # Cancellation and watchdog stops are terminal for this attempt,
             # but remain retryable.  Keep the in-flight stage and reason
@@ -1626,6 +1636,7 @@ class EaselAgentWorkflowService(WorkflowService):
                 job.update(status=exc.status, current=None, current_task='', content_status='draft', published=False)
                 self._save(job)
             self._debug_event(job, 'stage_blocked' if exc.status == 'blocked' else 'stage_failed', stage=current, message=exc.reason)
+            self._debug_event(job, 'workflow_blocked' if exc.status == 'blocked' else 'workflow_failed', stage=current, message=exc.reason)
         except Exception as exc:
             with self.lock:
                 current = job.get("current") or "discovery"
@@ -1637,3 +1648,4 @@ class EaselAgentWorkflowService(WorkflowService):
                 job.update(status="failed", current=None, content_status="draft", published=False)
                 self._save(job)
             self._debug_event(job, 'stage_failed', stage=current, message=self._failure_reason(exc))
+            self._debug_event(job, 'workflow_failed', stage=current, message=self._failure_reason(exc))

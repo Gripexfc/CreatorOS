@@ -289,6 +289,16 @@ class WorkflowService:
             job['stages'][key]['skills'] = self._stage_skills(job, key)
         with self.lock:
             self._save(job)
+            self._debug_event_unlocked(
+                job, 'workflow_started', message='工作流已创建',
+                detail={
+                    'execution_mode': job.get('execution_mode'),
+                    'platforms': ','.join(job.get('platforms') or []),
+                    'output_kind': job.get('output_kind'),
+                    'input_type': job.get('input_type'),
+                    'debug_mode': bool(job.get('debug_mode')),
+                },
+            )
             self.active.add(job['id'])
             self.cancel_events[job['id']] = threading.Event()
         self.executor.submit(self._run, job['id'])
@@ -335,6 +345,10 @@ class WorkflowService:
             job['streaming_outputs'] = {
                 platform: self._new_stream_state() for platform in job.get('platforms') or []
             }
+            self._debug_event_unlocked(
+                job, 'workflow_retry_requested', message='用户请求重试工作流',
+                detail={'attempt': job.get('attempt'), 'platforms': ','.join(job.get('platforms') or [])},
+            )
             self.cancel_events[job_id] = threading.Event()
             # An explicit retry is the only place where a legacy failed job
             # may be upgraded. This lets a user recover an old master-stage
@@ -377,6 +391,11 @@ class WorkflowService:
                 raise ValueError('仅排队中或运行中的作业可以停止')
             event = self.cancel_events.setdefault(job_id, threading.Event())
             event.set()
+            self._debug_event_unlocked(
+                job, 'workflow_cancel_requested', message='用户请求停止工作流',
+                stage=job.get('current'),
+                detail={'status': job.get('status'), 'current': job.get('current') or ''},
+            )
             current = job.get('current')
             if current and current in job.get('stages', {}):
                 job['_cancel_stage'] = current
@@ -445,7 +464,12 @@ class WorkflowService:
         workflow record. Lifecycle events are kept for every job; detailed
         runtime events are only emitted when debug mode is enabled.
         """
-        if not job.get('debug_mode') and kind not in {'stage_started', 'stage_finished', 'stage_blocked', 'stage_failed'}:
+        lifecycle_events = {
+            'workflow_started', 'workflow_retry_requested', 'workflow_cancel_requested',
+            'workflow_finished', 'workflow_failed', 'workflow_blocked',
+            'stage_started', 'stage_finished', 'stage_blocked', 'stage_failed',
+        }
+        if not job.get('debug_mode') and kind not in lifecycle_events:
             return
         now = float(at or time.time())
         stage_value = job.get('stages', {}).get(stage) if stage else None
@@ -1182,6 +1206,7 @@ class WorkflowService:
                     job['started_at'] = now
                 job.update(status='running', current=key)
                 self._save(job)
+            self._debug_event(job, 'stage_started', stage=key, message=f'开始{job["stages"][key].get("label", key)}')
             return now
 
         def finish(key, started, artifact=None, reason=''):
@@ -1199,6 +1224,7 @@ class WorkflowService:
                 if artifact:
                     stage['artifact'] = artifact
                 self._save(job)
+            self._debug_event(job, 'stage_finished', stage=key, message=f'{job["stages"][key].get("label", key)}完成', detail={'artifact': artifact or '', 'reason': reason})
 
         # One gateway check protects both model phases.  A missing gateway is
         # a blocked research stage, never a fake local success.
@@ -1207,6 +1233,7 @@ class WorkflowService:
                 job.update(status='blocked', current=None)
                 job['stages']['discovery'].update(status='blocked', reason='BLOCKED：模型/研究网关未配置或不可用。配置后可从研究阶段重试，已有产物保留。')
                 self._save(job)
+            self._debug_event(job, 'stage_blocked', stage='discovery', message='模型/研究网关未配置或不可用')
             return
 
         research_stage = job['stages']['discovery']
@@ -1250,6 +1277,7 @@ class WorkflowService:
                         )
                         job.update(status='blocked', current=None)
                         self._save(job)
+                    self._debug_event(job, 'stage_blocked', stage='discovery', message=blocked)
                     return
                 if not isinstance(content, str) or not content.strip():
                     raise RuntimeError('研究阶段未返回有效内容')
@@ -1266,6 +1294,7 @@ class WorkflowService:
                     )
                     job.update(status='failed', current=None)
                     self._save(job)
+                self._debug_event(job, 'stage_failed', stage='discovery', message=self._failure_reason(exc))
                 return
 
         research_path = self.outputs / job['stages']['discovery']['artifact']
@@ -1314,6 +1343,7 @@ class WorkflowService:
         def compose_one(platform):
             prompt = self._compact_prompt(job, platform, research)
             session_id = f'workflow-{job_id}-compact-compose-{platform}-attempt-{job.get("attempt", 1)}'
+            self._debug_event(job, 'platform_compose_started', stage='master', platform=platform, message=f'开始{TARGETS.get(platform, platform)}平台成稿')
             state = job.setdefault('streaming_outputs', {}).setdefault(platform, self._new_stream_state())
             stream_buffer = {'text': str(state.get('text') or ''), 'last_saved': 0.0, 'last_chars': 0}
             started_at = time.time()
@@ -1360,6 +1390,7 @@ class WorkflowService:
                     chars=len(value), error='',
                 )
                 self._save(job)
+            self._debug_event(job, 'stream_finished', stage='master', platform=platform, message=f'{TARGETS.get(platform, platform)}平台成稿返回', detail={'chars': len(value)})
             return value
 
         if missing or materialize_only:
@@ -1371,6 +1402,7 @@ class WorkflowService:
                             results[platform] = future.result()
                         except Exception as exc:
                             errors[platform] = self._failure_reason(exc)
+                            self._debug_event(job, 'platform_compose_failed', stage='master', platform=platform, message=errors[platform])
                             with self.lock:
                                 state = job.setdefault('streaming_outputs', {}).setdefault(platform, self._new_stream_state())
                                 state.update(complete=False, updated_at=time.time(), error=errors[platform], chars=len(state.get('text') or ''))
@@ -1460,6 +1492,7 @@ class WorkflowService:
                 )
                 job.update(status='failed', current=None)
                 self._save(job)
+            self._debug_event(job, 'stage_failed', stage='master', message='平台成稿失败', detail={'platforms': ','.join(errors), 'errors': ';'.join(f'{TARGETS.get(p, p)}：{r}' for p, r in errors.items())})
             return
 
         master_path = folder / '03-master.md'
@@ -1522,6 +1555,7 @@ class WorkflowService:
                 job['stages']['adaptation'].update(status='failed', reason='平台终稿未生成：' + '、'.join(missing_final))
                 job.update(status='failed', current=None)
                 self._save(job)
+            self._debug_event(job, 'stage_failed', stage='adaptation', message='平台终稿缺失', detail={'missing': ','.join(missing_final)})
             return
         # Reuse the existing archive branch's safety checks by materializing a
         # compact completion and writing a minimal manifest here.
@@ -1543,6 +1577,7 @@ class WorkflowService:
         with self.lock:
             job.update(status='completed', current=None, content_status='draft', published=False)
             self._save(job)
+        self._debug_event(job, 'workflow_finished', message='工作流完成', detail={'platforms': ','.join(job.get('platforms') or []), 'pending_assets': len(pending_assets)})
 
     def _run(self, job_id):
         try:
@@ -1560,11 +1595,13 @@ class WorkflowService:
                     job.update(status='running', current=key)
                     job['stages'][key].update(status='running', reason='')
                     self._save(job)
+                self._debug_event(job, 'stage_started', stage=key, message=f'开始{label}')
                 if key != 'archive' and not self.gateway():
                     with self.lock:
                         job.update(status='blocked', current=None)
                         job['stages'][key].update(status='blocked', reason='BLOCKED：模型/研究网关未配置或不可用。配置后可从本阶段重试，已有产物保留。')
                         self._save(job)
+                    self._debug_event(job, 'stage_blocked', stage=key, message='模型/研究网关未配置或不可用')
                     return
                 folder = self.outputs / f'workflow-{job_id}'
                 folder.mkdir(parents=True, exist_ok=True)
@@ -1689,6 +1726,7 @@ class WorkflowService:
                             job.update(status='blocked', current=None)
                             job['stages'][key].update(status='blocked', reason=blocked_reason)
                             self._save(job)
+                        self._debug_event(job, 'stage_blocked', stage=key, message=blocked_reason)
                         return
                     if not isinstance(content, str) or not content.strip():
                         raise RuntimeError('模型未返回有效内容')
@@ -1697,9 +1735,11 @@ class WorkflowService:
                 with self.lock:
                     job['stages'][key].update(status='completed', artifact=str(artifact.relative_to(self.outputs)))
                     self._save(job)
+                self._debug_event(job, 'stage_finished', stage=key, message=f'{label}完成', detail={'artifact': artifact.name})
             with self.lock:
                 job.update(status='completed', current=None, content_status='draft', published=False)
                 self._save(job)
+            self._debug_event(job, 'workflow_finished', message='工作流完成')
         except Exception as exc:
             with self.lock:
                 job = self.get(job_id)
@@ -1708,6 +1748,7 @@ class WorkflowService:
                     job['stages'][key].update(status='failed', reason=self._failure_reason(exc))
                 job.update(status='failed', current=None)
                 self._save(job)
+            self._debug_event(job, 'workflow_failed', stage=key if 'key' in locals() else None, message=self._failure_reason(exc))
         finally:
             with self.lock:
                 # Compact and legacy paths both settle through this finally
