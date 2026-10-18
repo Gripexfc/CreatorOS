@@ -92,50 +92,66 @@ function Test-PortInUse {
     }
 }
 
-foreach ($port in @(8000, 5173)) {
-    if (Test-PortInUse -Port $port) {
-        throw "端口 $port 已被占用。请先关闭旧的 CreatorOS API/Vite 窗口，再重新启动。"
-    }
-}
-
 $escapedRoot = $root.Replace("'", "''")
 $escapedPython = $python.Replace("'", "''")
 $apiCommand = "Set-Location -LiteralPath '$escapedRoot'; & '$escapedPython' -m creatoros web --host 127.0.0.1 --port 8000"
 $env:VITE_API_BASE_URL = 'http://127.0.0.1:8000'
 $env:CREATOROS_FRONTEND_ORIGIN = $frontendUrl
 
-Write-Host "正在启动 API（8000）…" -ForegroundColor Cyan
-$apiProcess = Start-Process -FilePath 'powershell.exe' -WorkingDirectory $root -PassThru -ArgumentList @(
-    '-NoExit',
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-Command',
-    $apiCommand
-)
-
-Write-Host "等待 API 完成数据库迁移并就绪…" -ForegroundColor Yellow
-$apiReady = Wait-ForUrl -Url $apiUrl -TimeoutSeconds 90
-if (-not $apiReady) {
-    if ($apiProcess.HasExited) {
-        throw "API 启动失败（退出码 $($apiProcess.ExitCode)），请查看 API PowerShell 窗口。"
+Write-Host "检查 API（8000）…" -ForegroundColor Cyan
+$apiReady = $false
+if (Test-PortInUse -Port 8000) {
+    Write-Host "检测到 8000 已占用，正在检查现有 API…" -ForegroundColor Yellow
+    $apiReady = Wait-ForUrl -Url $apiUrl -TimeoutSeconds 10
+    if ($apiReady) {
+        Write-Host "复用已运行的 API。" -ForegroundColor Green
     }
-    throw "API 在 90 秒内没有就绪，请查看 API PowerShell 窗口是否卡在数据库迁移或仍有错误。"
+    else {
+        throw "端口 8000 已被占用，但现有服务没有返回 CreatorOS API。请关闭占用 8000 的进程后重试。"
+    }
+}
+else {
+    Write-Host "正在启动 API（8000）…" -ForegroundColor Cyan
+    Start-Process -FilePath 'powershell.exe' -WorkingDirectory $root -ArgumentList @(
+        '-NoExit',
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        $apiCommand
+    )
+
+    Write-Host "等待 API 完成数据库迁移并就绪…" -ForegroundColor Yellow
+    $apiReady = Wait-ForUrl -Url $apiUrl -TimeoutSeconds 90
+    if (-not $apiReady) {
+        throw "API 在 90 秒内没有就绪，请查看 API PowerShell 窗口是否卡在数据库迁移或仍有错误。"
+    }
 }
 
-Write-Host "API 已就绪，正在启动前端（5173）…" -ForegroundColor Cyan
-$frontendProcess = Start-Process -FilePath 'cmd.exe' -WorkingDirectory $frontend -PassThru -ArgumentList @(
-    '/k',
-    'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort'
-)
-
-Write-Host "等待前端就绪…" -ForegroundColor Yellow
-$frontendReady = Wait-ForUrl -Url $frontendUrl -TimeoutSeconds 60
-if (-not $frontendReady) {
-    if ($frontendProcess.HasExited) {
-        throw "前端启动失败（退出码 $($frontendProcess.ExitCode)），请查看前端 CMD 窗口。"
+Write-Host "检查前端（5173）…" -ForegroundColor Cyan
+$frontendReady = $false
+if (Test-PortInUse -Port 5173) {
+    Write-Host "检测到 5173 已占用，正在检查现有前端…" -ForegroundColor Yellow
+    $frontendReady = Wait-ForUrl -Url $frontendUrl -TimeoutSeconds 10
+    if ($frontendReady) {
+        Write-Host "复用已运行的前端。" -ForegroundColor Green
     }
-    throw "前端在 60 秒内没有就绪，请查看前端 CMD 窗口。"
+    else {
+        throw "端口 5173 已被占用，但现有服务没有返回前端页面。请关闭占用 5173 的进程后重试。"
+    }
+}
+else {
+    Write-Host "API 已就绪，正在启动前端（5173）…" -ForegroundColor Cyan
+    Start-Process -FilePath 'cmd.exe' -WorkingDirectory $frontend -ArgumentList @(
+        '/k',
+        'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort'
+    )
+
+    Write-Host "等待前端就绪…" -ForegroundColor Yellow
+    $frontendReady = Wait-ForUrl -Url $frontendUrl -TimeoutSeconds 60
+    if (-not $frontendReady) {
+        throw "前端在 60 秒内没有就绪，请查看前端 CMD 窗口。"
+    }
 }
 
 if (-not $apiReady -or -not $frontendReady) {
