@@ -33,7 +33,7 @@ make lint
 
 ### Windows 一键安装与启动
 
-Windows 不需要 `make`。先把仓库克隆或下载到本地，确保电脑已安装 **Node.js 20+**（包含 npm）；安装脚本会检查 Python，并在需要时自动安装 `uv`。如果电脑没有 Python，请先安装 Python 3.12（安装时勾选 **Add Python to PATH**）。
+Windows 不需要 `make`。先把仓库克隆或下载到本地，确保电脑已安装 **Node.js 20+**（包含 npm）；安装脚本会检查 Python，并在需要时自动安装 `uv`。如果电脑没有 Python，请先安装 Python 3.12（安装时勾选 **Add Python to PATH**）。模型服务和内容生成还需要 OpenClaw；在 Node.js 24.16+ 环境下双击 `install-openclaw-windows.bat` 安装。
 
 在项目根目录双击一次 `install-windows.bat`，它会创建 `.venv312`、安装后端依赖和前端依赖。以后双击 `start-all-windows.bat`（或 `start-windows.bat`），脚本会先准备 Windows 运行目录联接，再分别打开 API 和前端窗口，服务就绪后自动打开 `http://127.0.0.1:5173/#/create`。要停止项目，关闭这两个终端窗口即可。
 

@@ -497,7 +497,7 @@ export function ModelSettingsPage() {
         primary,
         clearKey,
       }]);
-      if (response.ok === false || /失败|未完成|未能启动/i.test(response.note || '')) {
+      if (response.ok === false) {
         throw new Error(response.note || '本地创作服务没有完成配置同步');
       }
       const nextRows = response.channels.chat.rows || [];
@@ -833,7 +833,7 @@ function MediaModelSettings({ channel }: { channel: MediaChannel }) {
     setSaving(true); setError(''); setNotice(''); setTestResult(null);
     try {
       const response = await saveModelConfig([{ slot, model: model.trim(), baseUrl: baseUrl.trim(), key: key.trim(), key2: key2.trim(), primary, clearKey, clearKey2 }], channel);
-      if (response.ok === false || /失败|未完成|未能启动/i.test(response.note || '')) {
+      if (response.ok === false) {
         throw new Error(response.note || '本地创作服务没有完成配置同步');
       }
       setChannels(response.channels);

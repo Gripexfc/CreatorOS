@@ -1982,6 +1982,26 @@ def _openclaw_provider_creds() -> dict[str, tuple[str, str]]:
         return {}
 
 
+def _minimal_openclaw_config() -> dict:
+    """Return the smallest valid CreatorOS profile config for first-run Windows setup.
+
+    The OpenClaw CLI normally creates this file during ``setup --baseline``.
+    Keeping a local fallback lets the settings page persist a provider even
+    before the optional CLI is installed; gateway startup will then report the
+    missing CLI explicitly instead of discarding the user's configuration.
+    """
+    return {
+        "models": {"providers": {}},
+        "agents": {"defaults": {"model": {}}},
+        "gateway": {
+            "mode": "local",
+            "bind": "loopback",
+            "port": resolve_gateway_port(OPENCLAW_PROFILE),
+            "auth": {"mode": "token", "token": secrets.token_hex(24)},
+        },
+    }
+
+
 def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str],
                         primary_ref: str | None = None) -> str:
     """同步 chat 供应商到 CreatorOS 隔离配置：更新/新增 + 删除多余自定义 + 主模型。
@@ -1992,14 +2012,22 @@ def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str]
     """
     try:
         oc = PROJECT_ROOT / 'openclaw' / 'openclaw.json'
+        bootstrap_note = ''
         if not oc.is_file():
-            setup = subprocess.run(
-                openclaw_base_cmd() + ['--profile', OPENCLAW_PROFILE, 'setup', '--baseline',
-                                      '--workspace', str(oc.parent / 'workspace')],
-                env=_proxy_env(), cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=30)
-            if setup.returncode != 0 or not oc.is_file():
-                return '模型信息已保存，但本地创作服务初始化失败；请重试保存并测试。'
-        data = json.loads(oc.read_text(encoding='utf-8'))
+            try:
+                setup = subprocess.run(
+                    openclaw_base_cmd() + ['--profile', OPENCLAW_PROFILE, 'setup', '--baseline',
+                                          '--workspace', str(oc.parent / 'workspace')],
+                    env=_proxy_env(), cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=30)
+                if setup.returncode != 0 or not oc.is_file():
+                    bootstrap_note = 'OpenClaw 初始化未完成，已先写入本地配置；安装 OpenClaw 后再启动模型服务'
+            except FileNotFoundError:
+                bootstrap_note = '未找到 OpenClaw CLI，已先写入本地配置；请运行 npm i -g openclaw 后再启动模型服务'
+        if oc.is_file():
+            data = json.loads(oc.read_text(encoding='utf-8'))
+        else:
+            oc.parent.mkdir(parents=True, exist_ok=True)
+            data = _minimal_openclaw_config()
         providers = data.setdefault('models', {}).setdefault('providers', {})
         changed = False
         gateway = data.setdefault('gateway', {})
@@ -2060,11 +2088,12 @@ def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str]
                 changed = True
         if not changed:
             return ''
-        shutil.copy2(oc, oc.parent / (oc.name + '.bak-web'))
+        if oc.is_file():
+            shutil.copy2(oc, oc.parent / (oc.name + '.bak-web'))
         tmp = oc.parent / (oc.name + '.tmp')
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
         tmp.replace(oc)
-        return 'openclaw 已同步（下一条消息生效）'
+        return '；'.join(value for value in (bootstrap_note, 'openclaw 已同步（下一条消息生效）') if value)
     except Exception:  # noqa: BLE001 - never expose config paths or provider secrets
         return '模型信息已保存，但本地创作服务配置未完成；请重试保存并测试。'
 
@@ -2080,12 +2109,16 @@ def _ensure_creatoros_gateway() -> str:
         if not (PROJECT_ROOT / 'openclaw' / 'openclaw.json').is_file():
             return '本地创作服务尚未初始化，请重试保存并测试。'
         try:
+            command = openclaw_base_cmd()
+        except FileNotFoundError:
+            return '配置已保存，但未找到 OpenClaw CLI；请先运行 npm i -g openclaw，再重启 CreatorOS。'
+        try:
             env = _proxy_env()
             env['OPENCLAW_RAW_STREAM'] = '1'
             env['OPENCLAW_RAW_STREAM_PATH'] = str(SHARED_RAW_STREAM)
             proc = subprocess.Popen(
-                openclaw_base_cmd() + ['--profile', OPENCLAW_PROFILE, 'gateway', 'run',
-                                      '--bind', 'loopback', '--port', str(resolve_gateway_port(OPENCLAW_PROFILE))],
+                command + ['--profile', OPENCLAW_PROFILE, 'gateway', 'run',
+                           '--bind', 'loopback', '--port', str(resolve_gateway_port(OPENCLAW_PROFILE))],
                 cwd=str(PROJECT_ROOT), env=env, stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             for _ in range(40):

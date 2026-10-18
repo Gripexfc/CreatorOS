@@ -241,6 +241,22 @@ def test_model_save_merges_custom_provider_instead_of_pruning_other_rows(monkeyp
     assert saved["agents"]["defaults"]["model"]["primary"] == "beta/beta-model"
 
 
+def test_model_save_bootstraps_config_when_openclaw_cli_is_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(upstream, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(upstream, "openclaw_base_cmd", lambda: (_ for _ in ()).throw(FileNotFoundError()))
+    note = upstream._sync_openclaw_chat(
+        {"minimax": {"base": "https://api.example.com/v1", "key": "test-key", "model": "MiniMax-M3.1-Flash"}},
+        {"minimax"},
+        "minimax/MiniMax-M3.1-Flash",
+    )
+    assert "未找到 OpenClaw CLI" in note
+    saved = json.loads((tmp_path / "openclaw" / "openclaw.json").read_text())
+    provider = saved["models"]["providers"]["minimax"]
+    assert provider["baseUrl"] == "https://api.example.com/v1"
+    assert provider["apiKey"] == "test-key"
+    assert provider["models"][0]["id"] == "MiniMax-M3.1-Flash"
+
+
 def test_model_selftest_uses_generation_probe_and_classifies_billing(monkeypatch):
     class BillingOpener:
         def open(self, request, timeout):
