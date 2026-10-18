@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createProfileVersion, getProfile, type Platform, type ProfileSnapshot, type PlatformProfile } from './api';
 import { errorText, Message } from './components/shared';
 import { StudioIcon } from './components/StudioIcon';
+import { beginDirectCreate } from './lib/createEntry';
 import {
   createDefaultProfile,
   emptyPlatform,
@@ -154,6 +155,7 @@ export function StudioProfilePage({ navigate }: { navigate: (path: string) => vo
   const setIdentity = (key: keyof ProfileSnapshot['identity'], value: string) => setSnapshotValue({ identity: { ...snapshot.identity, [key]: value } });
   const setCommon = (patch: Partial<NonNullable<ProfileSnapshot['content_defaults']>>) => setSnapshotValue({ content_defaults: { ...snapshot.content_defaults!, ...patch } });
   const setPlatform = (platform: Platform, value: PlatformProfile) => setSnapshot(current => ({ ...current, platforms: { ...current.platforms, [platform]: value } }));
+  const startDirectCreate = () => { beginDirectCreate(); navigate('create'); };
   const save = async () => {
     if (!dirty || busy) return;
     setBusy(true); setError('');
@@ -166,7 +168,7 @@ export function StudioProfilePage({ navigate }: { navigate: (path: string) => vo
   return <>
     <div className="studio-page-heading profile-heading">
       <div><h1>个人画像</h1><p>告诉知序你的经历、边界和表达习惯，后续生成可按这套偏好来写。</p></div>
-      <div className="profile-heading-actions"><button type="button" className="quiet-button" onClick={() => navigate('create')}><StudioIcon name="pen" size={16} />进入内容工作区</button></div>
+      <div className="profile-heading-actions"><button type="button" className="quiet-button" onClick={startDirectCreate}><StudioIcon name="pen" size={16} />进入内容工作区</button></div>
     </div>
     {notice && <Message>{notice}</Message>}{error && <Message error>{error}</Message>}
     <div className="profile-overview-strip" aria-label="写作偏好状态">
@@ -193,7 +195,7 @@ export function StudioProfilePage({ navigate }: { navigate: (path: string) => vo
         <section className="profile-evidence-section"><div className="profile-section-title"><div><h3>留下可引用的素材</h3><p>只写你愿意公开使用的经历、案例、数据或截图位置。</p></div><span>证据范围</span></div><div className="profile-field"><label htmlFor="profile-evidence">真实经历、案例、数据</label><textarea id="profile-evidence" rows={3} value={snapshot.evidence_refs.join('\n')} onChange={event => setSnapshotValue({ evidence_refs: event.target.value.split('\n').map(value => value.trim()).filter(Boolean) })} placeholder="一行一条，例如：2026 年 9 月，完成一次本地内容工作流改造，可公开分享过程和结果。" /></div></section>
         <div className="profile-save-row"><span>{dirty ? '有未保存的修改' : '当前写作偏好已同步'}<small>保存会创建一个新的可回看的写作偏好版本。</small></span><button type="button" className="primary" disabled={!dirty || busy} onClick={() => void save()}>{busy ? '正在保存…' : '保存这套写作偏好'}</button></div>
       </section>
-      <aside className="profile-guide-card"><div className="guide-mark"><StudioIcon name="spark" size={22} /></div><h2>设置时只需要记住三件事</h2><ol><li><strong>共用规则管方向</strong><span>定位、语气和格式是所有平台的默认起点，适合先把运营标准定下来。</span></li><li><strong>平台卡片只写差异</strong><span>公众号可以更完整，小红书更适合清单，抖音更看重开场和口播。</span></li><li><strong>留空也没关系</strong><span>没有单独设置的平台字段会继承共用配置；之后想调整，改完再保存一个新版本即可。</span></li></ol><div className="profile-guide-note"><strong>保存后会发生什么？</strong><span>下一次创作会引用当前版本。历史版本仍然保留，方便你比较和恢复。</span></div><button type="button" className="secondary" onClick={() => navigate('create')}>去生成一篇试试<StudioIcon name="arrow" size={15} /></button></aside>
+      <aside className="profile-guide-card"><div className="guide-mark"><StudioIcon name="spark" size={22} /></div><h2>设置时只需要记住三件事</h2><ol><li><strong>共用规则管方向</strong><span>定位、语气和格式是所有平台的默认起点，适合先把运营标准定下来。</span></li><li><strong>平台卡片只写差异</strong><span>公众号可以更完整，小红书更适合清单，抖音更看重开场和口播。</span></li><li><strong>留空也没关系</strong><span>没有单独设置的平台字段会继承共用配置；之后想调整，改完再保存一个新版本即可。</span></li></ol><div className="profile-guide-note"><strong>保存后会发生什么？</strong><span>下一次创作会引用当前版本。历史版本仍然保留，方便你比较和恢复。</span></div><button type="button" className="secondary" onClick={startDirectCreate}>去生成一篇试试<StudioIcon name="arrow" size={15} /></button></aside>
     </div>
   </>;
 }

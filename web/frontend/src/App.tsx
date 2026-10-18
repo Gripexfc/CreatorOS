@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, t
 import { ModelSettingsPage } from './ModelSettingsPage';
 import { getStatus } from './api';
 import { StudioIcon } from './components/StudioIcon';
+import { beginDirectCreate } from './lib/createEntry';
 
 const QuickCreatePage = lazy(() => import('./QuickCreatePage').then(module => ({ default: module.QuickCreatePage })));
 const HotspotsPage = lazy(() => import('./HotspotsPage').then(module => ({ default: module.HotspotsPage })));
@@ -222,7 +223,7 @@ export default function App() {
     const item = routeByKey.get(key);
     if (!item) return null;
     const [routeKey, label, icon, hint] = item;
-    return <a className="studio-nav-item" key={routeKey} href={`#/${routeKey}`} aria-label={label} title={hint} aria-current={(route.view === routeKey || (route.view === 'workspace' && routeKey === 'create')) ? 'page' : undefined}>
+    return <a className="studio-nav-item" key={routeKey} href={`#/${routeKey}`} onClick={routeKey === 'create' ? beginDirectCreate : undefined} aria-label={label} title={hint} aria-current={(route.view === routeKey || (route.view === 'workspace' && routeKey === 'create')) ? 'page' : undefined}>
       <span className="studio-nav-icon"><StudioIcon name={icon} /></span><span className="studio-nav-label">{label}</span>
       {routeKey === 'profile' && route.view === 'profile' && <span className="studio-nav-count">当前</span>}
     </a>;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, listQuickDrafts, listWorkflows, type QuickDraft, type WorkflowJob } from './api';
 import { Message, errorText } from './components/shared';
 import { StudioIcon } from './components/StudioIcon';
+import { beginDirectCreate } from './lib/createEntry';
 
 type Draft = {
   id: string;
@@ -165,6 +166,7 @@ export function StudioLibraryPage({ navigate }: { navigate: (path: string) => vo
   };
 
   const startNew = () => {
+    beginDirectCreate();
     try {
       for (const key of ['creatoros:editing-draft', 'creatoros:selected-hotspot', 'creatoros:compose-form']) {
         window.localStorage.removeItem(key);

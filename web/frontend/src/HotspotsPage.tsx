@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createHotspot, getTrends, listHotspots, type Hotspot, type TrendBoard, type TrendItem, type TrendSourceKey } from './api';
 import { Message, errorText } from './components/shared';
 import { StudioIcon } from './components/StudioIcon';
+import { beginDirectCreate, beginHotspotCreate } from './lib/createEntry';
 
 const SOURCES: { key: TrendSourceKey; label: string; mark: string; description: string }[] = [
   { key: 'douyin', label: '抖音', mark: '抖', description: '捕捉正在发生的流行' },
@@ -58,6 +59,7 @@ export function HotspotsPage({ navigate }: { navigate: (path: string) => void })
     try {
       window.localStorage.setItem('creatoros:selected-hotspot', JSON.stringify({ title: row.title, summary: row.summary, url: row.canonical_url, source: row.source_name, platform: 'xiaohongshu' }));
       window.localStorage.removeItem('creatoros:editing-draft'); window.localStorage.removeItem('creatoros:compose-form');
+      beginHotspotCreate();
     } catch {
       // The topic is still useful even when browser storage is full or blocked.
     }
@@ -86,7 +88,7 @@ export function HotspotsPage({ navigate }: { navigate: (path: string) => void })
       selectTopic(selected);
     } finally { setBusy(false); }
   };
-  const startBlank = () => { window.localStorage.removeItem('creatoros:selected-hotspot'); window.localStorage.removeItem('creatoros:editing-draft'); window.localStorage.removeItem('creatoros:compose-form'); navigate('create'); };
+  const startBlank = () => { beginDirectCreate(); navigate('create'); };
   return <>
     <div className="studio-page-heading"><div><h1>今天，想写点什么？</h1><p>发现值得聊的话题，把一时的灵感变成你的下一篇内容。</p></div><button type="button" className="secondary" disabled={loading} onClick={() => void load(true)}><StudioIcon name="refresh" size={16} />{loading ? '更新中' : '刷新热点'}</button></div>
     <div className="inspiration-strip"><div className="strip-mark"><StudioIcon name="pen" size={22} /></div><div><strong>已经有一个想法？</strong><p>写下一句话，交给创作助手展开。</p></div><button type="button" className="text-action" onClick={startBlank}>直接创作<StudioIcon name="arrow" size={17} /></button></div>

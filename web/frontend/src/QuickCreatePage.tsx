@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { cancelWorkflow, createContentTask, getProfile, getWorkflow, listMemories, listOfficialSkills, listQuickDrafts, listWorkflows, readOfficialOutput, retryWorkflow, saveQuickDraft, startWorkflow, type Memory, type OfficialSkill, type ProfileSnapshot, type WorkflowDebugEvent, type WorkflowJob, type WorkflowStreamingOutput } from './api';
 import { Message, errorText } from './components/shared';
 import { StudioIcon } from './components/StudioIcon';
+import { clearCreateEntryOrigin, consumeCreateEntryOrigin } from './lib/createEntry';
 import { profilePrompt } from './lib/profile';
 
 type Platform = 'wechat' | 'xiaohongshu' | 'douyin';
@@ -158,24 +159,27 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     if (handoffInitialized.current) {
       // The listener still needs to be registered after StrictMode's effect
       // cleanup/setup cycle; only the one-shot handoff read is gated.
-      const reset = () => { workflowRunRef.current += 1; workflowWatchRef.current = false; userEdited.current = false; outputEdited.current = false; setOutputKind('standard'); pendingWorkflow.current = null; setWorkflowWatching(false); setWorkflowStartedAt(null); setDraftId(''); setWorkflowId(null); setWorkflowArtifact(null); setWorkflowJob(null); setGeneratedMeta(null); setQualityReview(''); setStreamingPreview(''); setStreamingComplete(false); setPreviousOutput(''); sourceTopicRef.current = ''; setTopic(''); setContext(''); setOutput(''); setSource(''); setSourceUrl(''); setNotice(''); setError(''); setGatewayBlocked(false); setShowAdvanced(false); setPlatform('wechat'); setMode('文章'); setSkill(defaultSkill('文章', 'wechat')); setUseProfile(false); setFeedback(''); setFeedbackNote(''); setFeedbackSaved(false); setGeneratedOutput(''); setFormReady(true); };
+      const reset = () => { clearCreateEntryOrigin(); workflowRunRef.current += 1; workflowWatchRef.current = false; userEdited.current = false; outputEdited.current = false; setOutputKind('standard'); pendingWorkflow.current = null; setWorkflowWatching(false); setWorkflowStartedAt(null); setDraftId(''); setWorkflowId(null); setWorkflowArtifact(null); setWorkflowJob(null); setGeneratedMeta(null); setQualityReview(''); setStreamingPreview(''); setStreamingComplete(false); setPreviousOutput(''); sourceTopicRef.current = ''; setTopic(''); setContext(''); setOutput(''); setSource(''); setSourceUrl(''); setNotice(''); setError(''); setGatewayBlocked(false); setShowAdvanced(false); setPlatform('wechat'); setMode('文章'); setSkill(defaultSkill('文章', 'wechat')); setUseProfile(false); setFeedback(''); setFeedbackNote(''); setFeedbackSaved(false); setGeneratedOutput(''); setFormReady(true); };
       window.addEventListener('creatoros:new-content', reset);
       return () => window.removeEventListener('creatoros:new-content', reset);
     }
     handoffInitialized.current = true;
-    const hotspot = readJson<{ title?: string; summary?: string; source?: string; url?: string; platform?: Platform }>('creatoros:selected-hotspot');
+    const entryOrigin = consumeCreateEntryOrigin();
+    const directEntry = entryOrigin === 'direct';
+    const hotspot = directEntry ? null : readJson<{ title?: string; summary?: string; source?: string; url?: string; platform?: Platform }>('creatoros:selected-hotspot');
     let hotspotNotice = '';
     try {
       hotspotNotice = window.localStorage.getItem('creatoros:hotspot-handoff-notice') || '';
       window.localStorage.removeItem('creatoros:hotspot-handoff-notice');
     } catch { /* The topic hand-off remains usable without this notice. */ }
-    const editing = readJson<Draft>('creatoros:editing-draft');
-    const savedForm = readJson<ComposeFormSnapshot>('creatoros:compose-form');
+    const editing = directEntry ? null : readJson<Draft>('creatoros:editing-draft');
+    const savedForm = directEntry ? null : readJson<ComposeFormSnapshot>('creatoros:compose-form');
     // These entries are hand-off envelopes, not durable page state. Consume
     // them after the first mount so a later click on “新创作” cannot reopen
     // an old hotspot or draft unexpectedly.
     removeStorage('creatoros:selected-hotspot');
     removeStorage('creatoros:editing-draft');
+    if (directEntry) removeStorage('creatoros:compose-form');
     if (editing) {
       outputEdited.current = Boolean(editing.output);
       pendingWorkflow.current = editing.workflowId ? { workflowId: editing.workflowId, workflowArtifact: editing.workflowArtifact, topic: editing.topic || editing.title, context: editing.context, platform: editing.platform, mode: editing.mode, skill: editing.skill } : null;
@@ -205,7 +209,7 @@ export function QuickCreatePage({ navigate }: { navigate: (path: string) => void
     if (hotspotNotice) setNotice(hotspotNotice);
     setFormReady(true);
     void listOfficialSkills().then(setSkills).catch(e => setError(errorText(e)));
-    const reset = () => { workflowRunRef.current += 1; workflowWatchRef.current = false; userEdited.current = false; outputEdited.current = false; setOutputKind('standard'); pendingWorkflow.current = null; setWorkflowWatching(false); setWorkflowStartedAt(null); setDraftId(''); setWorkflowId(null); setWorkflowArtifact(null); setWorkflowJob(null); setGeneratedMeta(null); setQualityReview(''); setStreamingPreview(''); setStreamingComplete(false); setPreviousOutput(''); sourceTopicRef.current = ''; setTopic(''); setContext(''); setOutput(''); setSource(''); setSourceUrl(''); setNotice(''); setError(''); setGatewayBlocked(false); setShowAdvanced(false); setPlatform('wechat'); setMode('文章'); setSkill(defaultSkill('文章', 'wechat')); setUseProfile(false); setFeedback(''); setFeedbackNote(''); setFeedbackSaved(false); setGeneratedOutput(''); setFormReady(true); };
+      const reset = () => { clearCreateEntryOrigin(); workflowRunRef.current += 1; workflowWatchRef.current = false; userEdited.current = false; outputEdited.current = false; setOutputKind('standard'); pendingWorkflow.current = null; setWorkflowWatching(false); setWorkflowStartedAt(null); setDraftId(''); setWorkflowId(null); setWorkflowArtifact(null); setWorkflowJob(null); setGeneratedMeta(null); setQualityReview(''); setStreamingPreview(''); setStreamingComplete(false); setPreviousOutput(''); sourceTopicRef.current = ''; setTopic(''); setContext(''); setOutput(''); setSource(''); setSourceUrl(''); setNotice(''); setError(''); setGatewayBlocked(false); setShowAdvanced(false); setPlatform('wechat'); setMode('文章'); setSkill(defaultSkill('文章', 'wechat')); setUseProfile(false); setFeedback(''); setFeedbackNote(''); setFeedbackSaved(false); setGeneratedOutput(''); setFormReady(true); };
     window.addEventListener('creatoros:new-content', reset); return () => window.removeEventListener('creatoros:new-content', reset);
   }, []);
   useEffect(() => {
