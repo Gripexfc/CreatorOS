@@ -236,8 +236,21 @@ class _Validator:
         title, caption, tags = meta.get("title"), meta.get("caption"), meta.get("hashtags")
         if isinstance(title, str) and isinstance(caption, str) and isinstance(tags, list) and all(isinstance(t, str) for t in tags):
             self.copy_text = title.strip() + "\n\n" + caption.strip() + "\n\n" + " ".join(tags)
-        self.run("xhs_meta", self.script("xhs-note-creator", "validate_meta.py"), [str(self.root / "meta.json")])
         self.add("xhs_title", isinstance(title, str) and 1 <= len(title.strip()) <= 20, "小红书发布标题必须为 1–20 字")
+        # Text-only Xiaohongshu delivery deliberately omits media. It remains
+        # editable copy and can never be represented as a complete image post.
+        if self.kind == "text":
+            text_meta_ok = (
+                isinstance(meta.get("created_at"), str) and bool(meta.get("created_at").strip())
+                and isinstance(caption, str) and bool(caption.strip())
+                and isinstance(tags, list) and 3 <= len(tags) <= 8
+                and all(isinstance(item, str) and item.strip() for item in tags)
+            )
+            self.add("xhs_meta_text", text_meta_ok, "仅文案模式要求 created_at、caption 和 3–8 个话题")
+            self.media_kind = "copy"
+            self.add("xhs_media", True, "仅文案模式：未请求图片，不把文案标为完整图文")
+            return
+        self.run("xhs_meta", self.script("xhs-note-creator", "validate_meta.py"), [str(self.root / "meta.json")])
         if meta.get("post_format", "image") != "image":
             self.media_kind = "video"
             self.video(meta)

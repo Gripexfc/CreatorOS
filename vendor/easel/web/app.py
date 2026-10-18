@@ -1929,11 +1929,18 @@ async def api_settings_models_status():
 
 
 def _write_env_direct(updates: dict[str, str]) -> None:
-    """后端受控键位专用：就地更新/追加 .env（不做 allowlist 过滤，仅服务端固定映射调用）。原子写。"""
-    updates = {k: v for k, v in updates.items() if k and v.strip() != ''}
+    """后端受控键位专用：就地更新/追加/删除 .env（原子写）。
+
+    普通保存仍把空 key 解释为“沿用旧值”，由调用方不要把该字段放进
+    ``updates``；一旦调用方明确把某个配置键写成空字符串，则删除该键，给
+    设置面板提供可控的凭据清除语义。
+    """
+    updates = {k: (v or '') for k, v in updates.items() if k}
     if not updates:
         return
     _guard_env_values(updates)
+    deletes = {k for k, v in updates.items() if not v.strip()}
+    writes = {k: v for k, v in updates.items() if v.strip()}
     lines = ENV_FILE.read_text(encoding='utf-8').splitlines() if ENV_FILE.is_file() else []
     seen = set()
     out = []
@@ -1946,10 +1953,11 @@ def _write_env_direct(updates: dict[str, str]) -> None:
                 matched = k
         if matched is not None:
             seen.add(matched)
-            out.append(f'{matched}={updates[matched]}')
+            if matched not in deletes:
+                out.append(f'{matched}={writes[matched]}')
             continue
         out.append(line)
-    appended = [f'{k}={v}' for k, v in updates.items() if k not in seen]
+    appended = [f'{k}={v}' for k, v in writes.items() if k not in seen]
     if appended:
         if out and out[-1].strip() != '':
             out.append('')
@@ -1974,10 +1982,12 @@ def _openclaw_provider_creds() -> dict[str, tuple[str, str]]:
         return {}
 
 
-def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str], primary_ref: str) -> str:
+def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str],
+                        primary_ref: str | None = None) -> str:
     """同步 chat 供应商到 CreatorOS 隔离配置：更新/新增 + 删除多余自定义 + 主模型。
 
-    provider_updates: {pkey: {"model","base","key"}}；keep_custom: 保留的自定义键；primary_ref: 目标主模型（空=不改）。
+    provider_updates: {pkey: {"model","base","key","clearKey"}}；
+    keep_custom: 保留的自定义键；primary_ref: 目标主模型（``None``=不改，空字符串=清除）。
     只有确有差异才落盘（改前备份 .bak-web）。
     """
     try:
@@ -2008,7 +2018,8 @@ def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str]
         for pkey, vals in provider_updates.items():
             prov = providers.setdefault(pkey, {})
             base, key, model = vals.get('base', ''), vals.get('key', ''), vals.get('model', '')
-            if not key:
+            clear_key = bool(vals.get('clearKey'))
+            if not key and not clear_key:
                 _, env_key = _SLOT_ENV_KEYS.get(pkey, ('', ''))
                 key = _read_env().get(env_key, '') if env_key else ''
             if base and prov.get('baseUrl') != base:
@@ -2017,7 +2028,11 @@ def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str]
                 else:
                     prov['baseUrl'] = base
                     changed = True
-            if key and prov.get('apiKey') != key:
+            if clear_key:
+                if 'apiKey' in prov:
+                    prov.pop('apiKey', None)
+                    changed = True
+            elif key and prov.get('apiKey') != key:
                 prov['apiKey'] = key
                 changed = True
             if model:
@@ -2034,10 +2049,14 @@ def _sync_openclaw_chat(provider_updates: dict[str, dict], keep_custom: set[str]
                     models[0]['api'] = 'anthropic-messages' if pkey == 'anthropic' else 'openai-completions'
                     changed = True
                 prov['models'] = models
-        if primary_ref:
+        if primary_ref is not None:
             ref = data.setdefault('agents', {}).setdefault('defaults', {}).setdefault('model', {})
-            if ref.get('primary') != primary_ref:
-                ref['primary'] = primary_ref
+            if primary_ref:
+                if ref.get('primary') != primary_ref:
+                    ref['primary'] = primary_ref
+                    changed = True
+            elif 'primary' in ref:
+                ref.pop('primary', None)
                 changed = True
         if not changed:
             return ''
@@ -2087,6 +2106,10 @@ class ModelSaveRow(BaseModel):
     baseUrl: str = ""
     key: str = ""
     key2: str = ""
+    # Empty key remains backwards-compatible as "keep the stored key".  These
+    # flags are the explicit opt-in for removing a saved credential.
+    clearKey: bool = False
+    clearKey2: bool = False
     primary: bool = False
 
 
@@ -2116,6 +2139,8 @@ async def api_settings_models_save(req: ModelSaveRequest):
             _base0 = (_row.baseUrl or "").strip().rstrip("/")
             _key0 = (_row.key or "").strip()
             _key20 = (_row.key2 or "").strip()
+            _clear_key0 = bool(getattr(_row, "clearKey", False))
+            _clear_key20 = bool(getattr(_row, "clearKey2", False))
             _model0 = (_row.model or "").strip()
             if _base0 and not _valid_base_url(_base0):
                 raise HTTPException(400, f'{_p0["name"]} 的根地址需是合法的 http(s):// 地址')
@@ -2136,13 +2161,20 @@ async def api_settings_models_save(req: ModelSaveRequest):
             _req0 = [k for k in _p0["keys"] if k["required"] and k is not _bk0 and k is not _mk0]
             # 与对话通道同一条规矩：只改根地址、Key 留空（留空=沿用旧 Key），等于把已存的真 Key
             # 指到新地址去——SILICONFLOW 这类通道还有「连通性自测」会把它当 Bearer 发过去。
-            if _base0 and _bk0 and not _key0 and _base0 != (_env0.get(_bk0["env"], "") or "").strip().rstrip("/") \
+            if _base0 and _bk0 and not _key0 and not _clear_key0 \
+                    and _base0 != (_env0.get(_bk0["env"], "") or "").strip().rstrip("/") \
                     and _req0 and (_env0.get(_req0[0]["env"], "") or "").strip():
                 raise HTTPException(400, f'更换{_p0["name"]}的根地址时必须重新填写 Key')
-            if _key0 and _req0:
-                _mupd[_req0[0]["env"]] = _key0
-            if _key20 and len(_req0) > 1:
-                _mupd[_req0[1]["env"]] = _key20
+            if _req0:
+                if _key0:
+                    _mupd[_req0[0]["env"]] = _key0
+                elif _clear_key0:
+                    _mupd[_req0[0]["env"]] = ""
+            if len(_req0) > 1:
+                if _key20:
+                    _mupd[_req0[1]["env"]] = _key20
+                elif _clear_key20:
+                    _mupd[_req0[1]["env"]] = ""
             if _model0 and _mk0:
                 _mupd[_mk0["env"]] = _model0
             if _base0 and _bk0:
@@ -2161,7 +2193,11 @@ async def api_settings_models_save(req: ModelSaveRequest):
     updates: dict[str, str] = {}
     provider_updates: dict[str, dict] = {}
     keep_custom: set[str] = set()
-    primary_ref = ''
+    # ``None`` means the request did not express a primary-model change;
+    # ``''`` is an explicit clear from a row carrying primary=false.
+    primary_ref: str | None = None
+    primary_candidates: list[str] = []
+    primary_clear_requested = False
     is_chat = (req.channel or '').strip() == 'chat'
     _cur_env = _read_env()
     _cur_prov = _openclaw_provider_creds() if is_chat else {}
@@ -2171,6 +2207,11 @@ async def api_settings_models_save(req: ModelSaveRequest):
         model = (row.model or '').strip()
         base = (row.baseUrl or '').strip().rstrip('/')
         key = (row.key or '').strip()
+        clear_key = bool(getattr(row, 'clearKey', False))
+        row_fields = getattr(row, 'model_fields_set', None)
+        if row_fields is None:
+            row_fields = getattr(row, '__fields_set__', set())
+        primary_explicit = 'primary' in row_fields
         if base and not _valid_base_url(base):
             raise HTTPException(400, f'Base URL 需是合法的 http(s):// 地址：{base[:60]}')
         if key and any(ch.isspace() for ch in key):
@@ -2182,7 +2223,8 @@ async def api_settings_models_save(req: ModelSaveRequest):
         # 改 Base URL 但把 Key 留空（留空=沿用旧 Key）＝ 把已存的真 Key 指向新地址，
         # 之后一次「连通性自测」就会把它当 Bearer 送到新地址去。换地址必须重填 Key。
         _be, _ke = _SLOT_ENV_KEYS.get(slot, ('', ''))
-        if base and _be and not key and base != (_cur_env.get(_be, '') or '').strip().rstrip('/') \
+        if base and _be and not key and not clear_key \
+                and base != (_cur_env.get(_be, '') or '').strip().rstrip('/') \
                 and (_cur_env.get(_ke, '') or '').strip():
             raise HTTPException(400, f'更换 Base URL 时必须重新填写 API Key（{slot}）')
         pkey = ''
@@ -2193,8 +2235,11 @@ async def api_settings_models_save(req: ModelSaveRequest):
                 updates['OPENAI_BASE_URL'] = base
             if key:
                 updates['OPENAI_API_KEY'] = key
+            elif clear_key:
+                updates['OPENAI_API_KEY'] = ''
             if is_chat:
-                provider_updates['openai'] = {'model': model, 'base': base, 'key': key}
+                provider_updates['openai'] = {'model': model, 'base': base, 'key': key,
+                                              'clearKey': clear_key}
                 pkey = 'openai'
         elif slot == 'relay':
             if base:
@@ -2203,22 +2248,30 @@ async def api_settings_models_save(req: ModelSaveRequest):
                 updates['CLAUDE_MODEL'] = model
             if key:
                 updates['EASEL_LLM_API_KEY'] = key
+            elif clear_key:
+                updates['EASEL_LLM_API_KEY'] = ''
             if is_chat:
-                provider_updates['relay'] = {'model': model, 'base': base, 'key': key}
+                provider_updates['relay'] = {'model': model, 'base': base, 'key': key,
+                                             'clearKey': clear_key}
                 pkey = 'relay'
         elif slot == 'anthropic':
             if model:
                 updates['CLAUDE_MODEL'] = model
             if key:
                 updates['ANTHROPIC_API_KEY'] = key
+            elif clear_key:
+                updates['ANTHROPIC_API_KEY'] = ''
             if is_chat:
-                provider_updates['anthropic'] = {'model': model, 'base': base, 'key': key}
+                provider_updates['anthropic'] = {'model': model, 'base': base, 'key': key,
+                                                 'clearKey': clear_key}
                 pkey = 'anthropic'
         elif slot == 'siliconflow':
             if base:
                 updates['SILICONFLOW_BASE_URL'] = base
             if key:
                 updates['SILICONFLOW_API_KEY'] = key
+            elif clear_key:
+                updates['SILICONFLOW_API_KEY'] = ''
         elif slot == 'custom' and is_chat:
             if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,23}', name):
                 raise HTTPException(400, f'供应商名只能用小写字母/数字/横线（最长24位）：{name[:30] or "（空）"}')
@@ -2226,7 +2279,8 @@ async def api_settings_models_save(req: ModelSaveRequest):
                 raise HTTPException(400, f'「{name}」是内置槽位名，请换一个')
             if not model or not base:
                 raise HTTPException(400, f'自定义供应商「{name}」需要同时填模型和 Base URL')
-            provider_updates[name] = {'model': model, 'base': base, 'key': key}
+            provider_updates[name] = {'model': model, 'base': base, 'key': key,
+                                      'clearKey': clear_key}
             keep_custom.add(name)
             pkey = name
         # 同一条规矩也得覆盖 openclaw.json 这一侧：_sync_openclaw_chat 只在 key 非空时改
@@ -2235,13 +2289,20 @@ async def api_settings_models_save(req: ModelSaveRequest):
         # 但网关模式要放行：那边存的是 127.0.0.1:8890、面板回传的是真实上游，永远不相等，
         # 这道闸会把网关用户彻底锁死（连只改模型都保存不了）；而且下面 _sync_openclaw_chat
         # 本来就不会改网关的 baseUrl，没有「拿旧 Key 打新地址」这个风险。
-        if is_chat and pkey and base and not key:
+        if is_chat and pkey and base and not key and not clear_key:
             _pb, _pk = _cur_prov.get(pkey, ('', ''))
             if _pk and base != _pb.strip().rstrip('/') and not _is_local_gateway_base(_pb):
                 raise HTTPException(400, f'更换 Base URL 时必须重新填写 API Key（{pkey}）')
-        if is_chat and pkey and getattr(row, 'primary', False) and model:
-            primary_ref = f'{pkey}/{model}'
-    if not updates and not provider_updates and not primary_ref:
+        if is_chat and pkey and primary_explicit:
+            if getattr(row, 'primary', False) and model:
+                primary_candidates.append(f'{pkey}/{model}')
+            elif not getattr(row, 'primary', False):
+                primary_clear_requested = True
+    if primary_candidates:
+        primary_ref = primary_candidates[-1]
+    elif primary_clear_requested:
+        primary_ref = ''
+    if not updates and not provider_updates and primary_ref is None:
         raise HTTPException(400, '没有可保存的改动（key 留空表示不改）')
     if updates:
         _write_env_direct(updates)
@@ -4947,7 +5008,7 @@ class WorkflowRequest(BaseModel):
     profile: str = Field(default='', max_length=1200)
     skill: str = Field(default='', max_length=120)
     revision: WorkflowRevision | None = None
-    output_kind: str = Field(default='standard', pattern='^(standard|video)$')
+    output_kind: str = Field(default='standard', pattern='^(standard|video|image|text)$')
     debug_mode: bool = Field(default=False)
 @app.post('/api/workflow/run', status_code=202)
 async def api_workflow_run(req: WorkflowRequest):

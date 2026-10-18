@@ -77,6 +77,27 @@ def test_compact_persists_and_injects_original_material_and_profile(tmp_path):
         service.executor.shutdown()
 
 
+def test_compact_xhs_cleans_title_and_topic_hashtags(tmp_path):
+    def research(_prompt, _session_id):
+        return '研究简报\n来源：https://example.com\n待核验：无'
+
+    def compose(_prompt, _session_id):
+        return {'platform': 'xiaohongshu', 'content': '**标题：阿达西的馕复盘**\n\n**正文：** 只基于已给素材的复盘。'}
+
+    service = WorkflowService(tmp_path, lambda: True, research, compose_runner=compose)
+    try:
+        job_id = service.start('阿达西的馕复盘', ['xiaohongshu'])['id']
+        wait_job(service, job_id)
+        meta = json.loads((tmp_path / f'workflow-{job_id}' / 'xiaohongshu' / 'meta.json').read_text(encoding='utf-8'))
+        assert meta['title'] == '阿达西的馕复盘'
+        assert '**' not in meta['caption']
+        assert '#标题' not in meta['hashtags']
+        assert '#正文' not in meta['hashtags']
+        assert '#阿达西的馕复盘' in meta['hashtags']
+    finally:
+        service.executor.shutdown()
+
+
 def test_compact_materializes_wechat_platform_receipt(tmp_path):
     def research(_prompt, _session_id):
         return '研究简报\n来源：合成验收素材'

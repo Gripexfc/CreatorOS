@@ -20,6 +20,8 @@ dependencies = [
     "requests>=2.32,<3",
     "websocket-client>=1.7,<2",
     "cryptography>=42",
+    "numpy>=1.26,<3",
+    "Pillow>=10,<13",
 ]
 
 [project.optional-dependencies]

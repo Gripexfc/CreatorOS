@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from creatoros.services.text_generation import sanitize_model_text
+from creatoros.services.xhs_constraints import normalize_xhs_title
 
 
 class WorkflowInterruption(RuntimeError):
@@ -251,7 +252,7 @@ class WorkflowService:
             id=uuid4().hex[:12], topic=topic.strip(), context=normalized_context,
             input_type=normalized_input_type, source=normalized_source, source_url=normalized_source_url,
             platforms=list(dict.fromkeys(platforms)), profile=str(profile or '').strip()[:1200], skill=skill.strip(),
-            revision=normalized_revision, output_kind=(output_kind if output_kind in {'standard', 'video'} else 'standard'), status='queued', current=None,
+            revision=normalized_revision, output_kind=(output_kind if output_kind in {'standard', 'video', 'image', 'text'} else 'standard'), status='queued', current=None,
             created=time.time(), attempt_started=time.time(), attempt=1, stages=stages,
             execution_mode=getattr(self, 'default_execution_mode', None) or ('compact-v2' if self.compose_runner is not None else 'legacy-v1'),
             # Easel Agent jobs allow platform Skills, deterministic media checks,
@@ -562,6 +563,10 @@ class WorkflowService:
             if job.get('execution_mode') == 'easel-agent-v1':
                 platform_output = (job.get('platform_outputs') or {}).get(platform) or {}
                 platform_dir = folder / platform
+                if platform_output.get('media_status') == 'pending':
+                    # The article package is complete, but a later retry
+                    # should be able to resume the isolated media channel.
+                    missing.append(f'{platform}/media')
                 declared_artifacts = [str(item) for item in platform_output.get('artifacts') or [] if item]
                 artifacts_valid = bool(declared_artifacts) and all(self._artifact_is_valid(self.outputs, item) for item in declared_artifacts)
                 primary_valid = self._artifact_is_valid(self.outputs, platform_output.get('primary_text'))
@@ -898,11 +903,44 @@ class WorkflowService:
     @staticmethod
     def _compact_title(content: str, fallback: str) -> str:
         """Derive a display title from returned text without inventing facts."""
+        generic_titles = {'小红书终稿', '小红书笔记', '小红书平台稿', '平台终稿', '终稿'}
         for raw in str(content or '').splitlines():
-            candidate = raw.strip().lstrip('#').strip()
-            if candidate:
+            candidate = re.sub(r'[`*_#]+', '', raw.strip()).strip()
+            candidate = re.sub(r'^(?:标题|title)\s*[:：]\s*', '', candidate, flags=re.I).strip()
+            if candidate and candidate not in generic_titles:
                 return candidate[:64]
         return (fallback or '未命名草稿')[:64]
+
+    @staticmethod
+    def _compact_publish_text(content: str) -> str:
+        """Keep platform copy editable by removing markdown control syntax."""
+        text = str(content or '').strip()
+        text = re.sub(r'^#{1,6}\s*', '', text, flags=re.M)
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'__(.+?)__', r'\1', text)
+        text = re.sub(r'(?<!\*)\*(.+?)\*(?!\*)', r'\1', text)
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        return text.strip()
+
+    @staticmethod
+    def _compact_hashtags(topic: str, content: str) -> list[str]:
+        candidates = re.findall(r'[\u4e00-\u9fff]{2,12}|[A-Za-z][A-Za-z0-9_-]{2,}', f'{topic} {content}')
+        excluded = {'标题', '正文', '内容', '小红书', '终稿', '平台稿', '话题', 'caption', 'title', 'body', 'content'}
+        tags = []
+        for candidate in candidates:
+            if candidate.lower() in {item.lower() for item in excluded}:
+                continue
+            tag = f'#{candidate[:10]}'
+            if tag not in tags and tag not in {'#小红书终稿', '#平台终稿'}:
+                tags.append(tag)
+            if len(tags) >= 5:
+                break
+        for fallback in ('#内容复盘', '#经验分享', '#创作方法'):
+            if len(tags) >= 3:
+                break
+            if fallback not in tags:
+                tags.append(fallback)
+        return tags[:5]
 
     def _materialize_compact_manual_platform(self, job: dict, platform: str,
                                               content: str, folder: Path) -> dict:
@@ -917,13 +955,15 @@ class WorkflowService:
         platform_dir = folder / platform
         platform_dir.mkdir(parents=True, exist_ok=True)
         text = str(content or '').strip()
+        publish_text = self._compact_publish_text(text)
         title = self._compact_title(text, str(job.get('topic') or '未命名草稿'))
         stamp = time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime())
         if platform == 'xiaohongshu':
-            self._write_compact_artifact(platform_dir / 'note.md', text + '\n')
+            title, title_candidates, title_original = normalize_xhs_title(title, str(job.get('topic') or ''))
+            self._write_compact_artifact(platform_dir / 'note.md', publish_text + '\n')
             # Cards are text planning objects only.  Actual card_*.png files
             # are intentionally absent until a real renderer/material is run.
-            chunks = [part.strip() for part in re.split(r'\n{2,}', text) if part.strip()]
+            chunks = [part.strip() for part in re.split(r'\n{2,}', publish_text) if part.strip()]
             cards = []
             for index in range(3):
                 body = chunks[index] if index < len(chunks) else ''
@@ -939,14 +979,19 @@ class WorkflowService:
                     'content': body,
                     'synthesis_strategy': 'html_card',
                 })
+            text_only = job.get('output_kind') == 'text'
             meta = {
-                'title': title[:20], 'platform': '小红书', 'created_at': stamp,
-                'caption': text[:300],
-                'hashtags': ['#AI', '#内容创作', '#个人开发', '#工作流', '#经验复盘'],
-                'post_format': 'image', 'card_count': len(cards), 'cards': cards,
+                'title': title, 'title_candidates': title_candidates,
+                'platform': '小红书', 'created_at': stamp,
+                'caption': publish_text[:300],
+                'hashtags': self._compact_hashtags(str(job.get('topic') or ''), publish_text),
+                'post_format': 'text' if text_only else 'image',
+                'card_count': 0 if text_only else len(cards), 'cards': [] if text_only else cards,
                 'images': [], 'content_status': 'draft', 'published': False,
-                'media_status': 'manual_required',
+                'media_status': 'text_only' if text_only else 'manual_required',
             }
+            if title_original and title_original != title:
+                meta['title_original'] = title_original
             self._write_compact_artifact(platform_dir / 'meta.json', json.dumps(meta, ensure_ascii=False, indent=2) + '\n')
             manual = (
                 '# 小红书手动发布交付\n\n'
@@ -1029,6 +1074,9 @@ class WorkflowService:
             'manual_publish': True, 'media_kind': media_kind, **check,
             'artifacts': artifacts, 'primary_text': primary, 'copy_text': copy_text,
         }
+        if platform == 'xiaohongshu':
+            receipt['title'] = meta.get('title', title)
+            receipt['title_candidates'] = meta.get('title_candidates', [title])
         job.setdefault('agent_receipts', {})[platform] = receipt
         job.setdefault('platform_outputs', {})[platform] = {
             'directory': prefix, 'skill': PLATFORM_SKILLS.get(platform, platform),
@@ -1036,6 +1084,7 @@ class WorkflowService:
             'checks': receipt.get('checks', []), 'primary_text': primary,
             'copy_text': copy_text, 'missing': receipt.get('missing', []),
             'status': receipt.get('status'), 'manual_publish': True,
+            'title': receipt.get('title', ''), 'title_candidates': receipt.get('title_candidates', []),
         }
         self._write_compact_artifact(platform_dir / '.creatoros-agent.json', json.dumps(receipt, ensure_ascii=False, indent=2) + '\n')
         return receipt

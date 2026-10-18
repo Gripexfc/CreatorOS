@@ -27,3 +27,7 @@ data/*
 
 .venv312/
 runtime/
+
+# Generated workflow artifacts and imported reports
+/outputs/
+vendor/easel/skills/openclaw/skill-news-intelligence/reports/

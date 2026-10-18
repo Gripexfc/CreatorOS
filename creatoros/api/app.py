@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 import hashlib
 import re
+from xml.sax.saxutils import escape as xml_escape
 from urllib.parse import quote, unquote
 from uuid import uuid4
 from typing import Iterator, Literal, Optional
@@ -698,6 +699,112 @@ async def combined_lifespan(app):
 official_app.router.lifespan_context = combined_lifespan
 official_app.exception_handlers.update(legacy_app.exception_handlers)
 official_app.router.routes[0:0] = [r for r in legacy_app.routes if getattr(r, 'path', '').startswith('/api/v1')]
+
+
+def _site_origin(request: Request) -> str:
+    forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+    protocol = "https" if forwarded_proto == "https" else "http"
+    return f"{protocol}://{request.headers.get('host', request.url.netloc)}"
+
+
+_FRONTEND_DIST = Path(__file__).resolve().parents[2] / 'web/frontend/dist'
+
+
+def _site_page(request: Request, name: str):
+    page = _FRONTEND_DIST / name
+    if not page.is_file():
+        raise HTTPException(status_code=404, detail='页面不存在，请先构建前端')
+    content = page.read_text(encoding='utf-8').replace('https://example.invalid', _site_origin(request))
+    return Response(content=content, media_type='text/html')
+
+
+def _site_markdown(request: Request) -> str | None:
+    origin = _site_origin(request)
+    notes = (
+        "知序是本地优先的内容创作工作台，覆盖热点研究、选题整理、草稿编辑和发布前检查。\n\n"
+        "页面保留来源、版本、任务状态和人工核验记录；未连接真实模型或平台时，会明确显示待验证状态。\n\n"
+        "API 密钥、访问令牌和登录信息不应写入公开报告、截图、导出文件、版本库或 Issue。\n\n"
+        "任何自动化结果都应由人工复核，尤其是事实判断、账号归属、平台规则、隐私决定和最终发布。"
+    )
+    pages = {
+        '/': f"# 知序内容工作台\n\n{notes}\n\n- [关于知序]({origin}/about.html)\n- [联系维护者]({origin}/contact.html)\n- [隐私说明]({origin}/privacy.html)\n",
+        '/about.html': f"# 关于知序\n\n知序（CreatorOS）的维护者是 CreatorOS 团队。\n\n{notes}\n",
+        '/contact.html': f"# 联系知序维护者\n\n请通过 [CreatorOS GitHub Issues](https://github.com/Gripexfc/CreatorOS/issues) 报告问题或建议。提交内容前请删除敏感信息。\n\n{notes}\n",
+        '/privacy.html': f"# 隐私说明\n\n更新日期：2026-10-18。知序优先在当前设备处理草稿、研究资料、版本记录和审计结果。\n\n{notes}\n\n隐私问题请通过 [联系页面]({origin}/contact.html) 提交。\n",
+    }
+    return pages.get(request.url.path)
+
+
+@official_app.middleware("http")
+async def creatoros_security_headers(request: Request, call_next):
+    accepts_markdown = 'text/markdown' in request.headers.get('accept', '').lower()
+    markdown = _site_markdown(request) if accepts_markdown else None
+    if markdown is not None:
+        response = Response(content=markdown, media_type='text/markdown')
+        response.headers['Vary'] = 'Accept'
+    else:
+        response = await call_next(request)
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'",
+    )
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return response
+
+
+@official_app.get('/robots.txt', include_in_schema=False)
+def robots_txt(request: Request):
+    origin = _site_origin(request)
+    return Response(
+        content=f"User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: {origin}/sitemap.xml\n",
+        media_type="text/plain",
+    )
+
+
+@official_app.get('/sitemap.xml', include_in_schema=False)
+def sitemap_xml(request: Request):
+    origin = _site_origin(request)
+    urls = ''.join(f'<url><loc>{xml_escape(origin)}{path}</loc></url>' for path in ('/', '/about.html', '/contact.html', '/privacy.html'))
+    return Response(
+        content=f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n',
+        media_type="application/xml",
+    )
+
+
+@official_app.get('/llms.txt', include_in_schema=False)
+def llms_txt():
+    return Response(
+        content="# 知序\n\n> 本地优先的内容创作工作台，覆盖热点研究、内容创作、草稿整理和发布前检查。\n\n## Entry points\n\n- [知序内容工作台](/)\n- [热点话题](/#/hotspots)\n- [内容工作区](/#/create)\n- [模型设置](/#/settings)\n- [关于知序](/about.html)\n- [联系维护者](/contact.html)\n- [隐私说明](/privacy.html)\n\n## Boundaries\n\n- 本地配置和密钥只用于当前运行环境。\n- 未连接真实模型或平台账号时，页面会明确显示未连接或待验证状态。\n",
+        media_type="text/plain",
+    )
+
+
+@official_app.get('/about.html', include_in_schema=False)
+def about_page(request: Request):
+    return _site_page(request, 'about.html')
+
+
+@official_app.get('/contact.html', include_in_schema=False)
+def contact_page(request: Request):
+    return _site_page(request, 'contact.html')
+
+
+@official_app.get('/privacy.html', include_in_schema=False)
+def privacy_page(request: Request):
+    return _site_page(request, 'privacy.html')
+
+
+@official_app.get('/.well-known/security.txt', include_in_schema=False)
+def security_txt(request: Request):
+    canonical = f"{_site_origin(request)}/.well-known/security.txt"
+    return Response(
+        content=f"Contact: https://github.com/Gripexfc/CreatorOS/issues\nExpires: 2027-12-31T23:59:59Z\nPreferred-Languages: zh, en\nCanonical: {canonical}\n",
+        media_type="text/plain",
+    )
+
 # Keep the historical bookmark working, but point it at the CreatorOS-owned UI.
 @official_app.get('/legacy.html', include_in_schema=False)
 def legacy_page():
