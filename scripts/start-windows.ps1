@@ -76,6 +76,28 @@ function Wait-ForUrl {
     return $false
 }
 
+function Test-PortInUse {
+    param([Parameter(Mandatory = $true)][int]$Port)
+
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $client.Connect('127.0.0.1', $Port)
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $client.Dispose()
+    }
+}
+
+foreach ($port in @(8000, 5173)) {
+    if (Test-PortInUse -Port $port) {
+        throw "端口 $port 已被占用。请先关闭旧的 CreatorOS API/Vite 窗口，再重新启动。"
+    }
+}
+
 $escapedRoot = $root.Replace("'", "''")
 $escapedPython = $python.Replace("'", "''")
 $apiCommand = "Set-Location -LiteralPath '$escapedRoot'; & '$escapedPython' -m creatoros web --host 127.0.0.1 --port 8000"
@@ -83,7 +105,7 @@ $env:VITE_API_BASE_URL = 'http://127.0.0.1:8000'
 $env:CREATOROS_FRONTEND_ORIGIN = $frontendUrl
 
 Write-Host "正在启动 API（8000）…" -ForegroundColor Cyan
-Start-Process -FilePath 'powershell.exe' -WorkingDirectory $root -ArgumentList @(
+$apiProcess = Start-Process -FilePath 'powershell.exe' -WorkingDirectory $root -PassThru -ArgumentList @(
     '-NoExit',
     '-NoProfile',
     '-ExecutionPolicy',
@@ -92,17 +114,32 @@ Start-Process -FilePath 'powershell.exe' -WorkingDirectory $root -ArgumentList @
     $apiCommand
 )
 
-Write-Host "正在启动前端（5173）…" -ForegroundColor Cyan
-Start-Process -FilePath 'cmd.exe' -WorkingDirectory $frontend -ArgumentList @(
+Write-Host "等待 API 完成数据库迁移并就绪…" -ForegroundColor Yellow
+$apiReady = Wait-ForUrl -Url $apiUrl -TimeoutSeconds 90
+if (-not $apiReady) {
+    if ($apiProcess.HasExited) {
+        throw "API 启动失败（退出码 $($apiProcess.ExitCode)），请查看 API PowerShell 窗口。"
+    }
+    throw "API 在 90 秒内没有就绪，请查看 API PowerShell 窗口是否卡在数据库迁移或仍有错误。"
+}
+
+Write-Host "API 已就绪，正在启动前端（5173）…" -ForegroundColor Cyan
+$frontendProcess = Start-Process -FilePath 'cmd.exe' -WorkingDirectory $frontend -PassThru -ArgumentList @(
     '/k',
     'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort'
 )
 
-Write-Host "等待服务就绪…" -ForegroundColor Yellow
-$apiReady = Wait-ForUrl -Url $apiUrl
-$frontendReady = Wait-ForUrl -Url $frontendUrl
+Write-Host "等待前端就绪…" -ForegroundColor Yellow
+$frontendReady = Wait-ForUrl -Url $frontendUrl -TimeoutSeconds 60
+if (-not $frontendReady) {
+    if ($frontendProcess.HasExited) {
+        throw "前端启动失败（退出码 $($frontendProcess.ExitCode)），请查看前端 CMD 窗口。"
+    }
+    throw "前端在 60 秒内没有就绪，请查看前端 CMD 窗口。"
+}
+
 if (-not $apiReady -or -not $frontendReady) {
-    Write-Host "服务未能在 60 秒内全部就绪，请查看新打开的两个终端窗口。" -ForegroundColor Red
+    Write-Host "服务未能就绪，请查看新打开的终端窗口。" -ForegroundColor Red
     exit 1
 }
 
