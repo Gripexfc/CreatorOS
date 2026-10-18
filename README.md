@@ -37,7 +37,7 @@ Windows 不需要 `make`。先把仓库克隆或下载到本地，确保电脑�
 
 在项目根目录双击一次 `install-windows.bat`，它会创建 `.venv312`、安装后端依赖和前端依赖。以后双击 `start-all-windows.bat`（或 `start-windows.bat`），脚本会先准备 Windows 运行目录联接，再分别打开 API 和前端窗口，服务就绪后自动打开 `http://127.0.0.1:5173/#/create`。要停止项目，关闭这两个终端窗口即可。
 
-要让热点每天自动更新，首次在项目根目录双击 `setup-daily-trends-windows.bat`，默认每天 08:00 执行一次；也可以在 CMD 中运行 `setup-daily-trends-windows.bat 21:30` 设置其他时间。任务会优先刷新正在运行的 API；API 未启动时会独立抓取并把结果写入 `data/trend-cache.json`，网页下次打开会读取这份缓存。抓取日志保存在 `runtime/logs/`。
+要让热点每天自动更新，首次在项目根目录双击 `setup-daily-trends-windows.bat`，默认每天 08:00 执行一次；也可以在 CMD 中运行 `setup-daily-trends-windows.bat 21:30` 设置其他时间。任务会优先刷新正在运行的 API；API 未启动时会独立抓取并把结果写入 `data/trend-cache.json`，网页下次打开会读取这份缓存。抓取日志保存在 `runtime/logs/`。Windows 启动和每日任务会在证书吊销服务不可达时使用系统 `curl.exe` 的兼容兜底，其他环境仍保持正常 TLS 校验。
 
 脚本使用项目目录自身定位文件，所以项目放在桌面或包含中文、空格的路径下都可以。运行数据仍写在本机的 `data/` 和 `runtime/`，不会提交到 Git。
 

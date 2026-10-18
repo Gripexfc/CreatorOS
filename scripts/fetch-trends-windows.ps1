@@ -6,6 +6,7 @@ $dataDir = Join-Path $root 'data'
 $logDir = Join-Path $root 'runtime\logs'
 $apiUrl = 'http://127.0.0.1:8000/api/v1/trends?platforms=douyin,weibo,zhihu&limit=12&refresh=true'
 $logPath = Join-Path $logDir ("daily-trends-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
+$env:CREATOROS_CURL_NO_REVOKE = '1'
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 if (-not (Test-Path -LiteralPath $python)) {

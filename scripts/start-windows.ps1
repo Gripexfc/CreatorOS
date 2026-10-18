@@ -97,6 +97,7 @@ $escapedPython = $python.Replace("'", "''")
 $apiCommand = "Set-Location -LiteralPath '$escapedRoot'; & '$escapedPython' -m creatoros web --host 127.0.0.1 --port 8000"
 $env:VITE_API_BASE_URL = 'http://127.0.0.1:8000'
 $env:CREATOROS_FRONTEND_ORIGIN = $frontendUrl
+$env:CREATOROS_CURL_NO_REVOKE = '1'
 
 Write-Host "检查 API（8000）…" -ForegroundColor Cyan
 $apiReady = $false

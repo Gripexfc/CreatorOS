@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 from threading import Lock
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -26,13 +27,50 @@ TREND_SOURCES: Dict[str, Tuple[str, Tuple[Tuple[str, str], ...]]] = {
 REFRESH_SECONDS = 300
 
 
-def fetch_json(url: str) -> Any:
-    request = Request(url, headers={"User-Agent": "CreatorOS/0.1", "Accept": "application/json"})
-    with urlopen(request, timeout=7) as response:
-        raw = response.read(2_000_001)
+def _decode_json(raw: bytes) -> Any:
     if len(raw) > 2_000_000:
         raise ValueError("热榜响应过大")
     return json.loads(raw.decode("utf-8-sig"))
+
+
+def _fetch_json_with_curl(url: str) -> Any:
+    result = subprocess.run(
+        [
+            "curl.exe",
+            "--ssl-no-revoke",
+            "--fail",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "7",
+            "-H",
+            "User-Agent: CreatorOS/0.1",
+            "-H",
+            "Accept: application/json",
+            "--",
+            url,
+        ],
+        capture_output=True,
+        check=True,
+        timeout=10,
+    )
+    return _decode_json(result.stdout)
+
+
+def fetch_json(url: str) -> Any:
+    request = Request(url, headers={"User-Agent": "CreatorOS/0.1", "Accept": "application/json"})
+    try:
+        with urlopen(request, timeout=7) as response:
+            return _decode_json(response.read(2_000_001))
+    except Exception:
+        # Some Windows networks cannot reach certificate-revocation servers,
+        # causing Schannel to reject otherwise reachable public feeds. The
+        # Windows launch/task scripts opt into the system curl fallback; other
+        # environments keep normal certificate verification only.
+        if os.name != "nt" or os.getenv("CREATOROS_CURL_NO_REVOKE", "").lower() not in {"1", "true", "yes"}:
+            raise
+        return _fetch_json_with_curl(url)
 
 
 def _text(value: Any) -> str:
